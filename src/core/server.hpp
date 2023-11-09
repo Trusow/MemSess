@@ -114,7 +114,7 @@ namespace memsess::core {
         if( buf.length == 0 ) {
             auto lengthData = 0;
 
-            auto l = ::read( sock, &lengthData, sizeof( unsigned int ) );
+            auto l = ::recv( sock, &lengthData, sizeof( unsigned int ), MSG_NOSIGNAL );
             if( l < sizeof( unsigned int ) ) {
                 close( sock, conn );
                 return;
@@ -131,7 +131,7 @@ namespace memsess::core {
             buf.data = new char[lengthData];
         }
 
-        auto l = ::read( sock, &buf.data[buf.wrLength], buf.length - buf.wrLength );
+        auto l = ::recv( sock, &buf.data[buf.wrLength], buf.length - buf.wrLength, MSG_NOSIGNAL );
 
         if( l <= 0 ) {
             close( sock, conn );
@@ -151,7 +151,29 @@ namespace memsess::core {
     }
 
     void Server::write( int sock, short what, void *arg ) {
-        std::cout << "write" << std::endl;
+        Connection *conn = (Connection *)arg;
+
+        auto buf = conn->writeBuf;
+
+        if( buf.data == nullptr ) {
+            return;
+        }
+
+        auto l = ::send( sock, &buf.data[buf.wrLength], buf.length - buf.wrLength, MSG_NOSIGNAL );
+
+        if( l <= 0 ) {
+            close( sock, conn );
+            return;
+        }
+
+        buf.wrLength += l;
+
+        if( buf.wrLength == buf.length ) {
+            buf.wrLength = 0;
+            buf.length = 0;
+            delete[] buf.data;
+            buf.data = nullptr;
+        }
     }
 
     void Server::timer( int sock, short what, void *arg ) {
