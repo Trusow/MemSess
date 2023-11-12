@@ -4,7 +4,11 @@
 namespace memsess::i {
     class ServerControllerInterface {
         public:
-            virtual const char *parse( const char *data, unsigned int length ) = 0;
+            struct Result {
+                char *data;
+                unsigned int length;
+            };
+            virtual void parse( const char *data, unsigned int length, Result &result ) = 0;
             virtual void interval() = 0;
     };
 }
