@@ -13,11 +13,19 @@ namespace memsess::core {
     class Store: public i::StoreInterface {
 
         public:
+
+            struct Limiter {
+                unsigned long int ts; 
+                unsigned int limit;
+                unsigned int count;
+            };
  
             struct Value {
                 std::string value;
                 unsigned long int tsEnd;
                 unsigned int counterRecord;
+                std::unique_ptr<Limiter> limiterRead;
+                std::unique_ptr<Limiter> limiterWrite;
             };
  
             struct Item {
@@ -31,6 +39,7 @@ namespace memsess::core {
             unsigned int _limit;
             unsigned int _count = 0;
             unsigned long int getTime();
+            bool incLimiter( Limiter *limiter );
  
         public:
             Result generate( unsigned int lifetime, char *sessionId );
@@ -46,6 +55,8 @@ namespace memsess::core {
             Result setForceKey( const char *sessionId, const char *key, const char *value );
             Result getKey( const char *sessionId, const char *key, std::string &value, unsigned int &counterKeys, unsigned int &counterRecord );
             void removeKey( const char *sessionId, const char *key );
+            Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit );
+            Result setLimitToWritePerSec( const char *sessionId, const char *key, unsigned int limit );
          
             void clearInactive();
     };
@@ -216,6 +227,10 @@ namespace memsess::core {
             return Result::E_RECORD_BEEN_CHANGED;
         }
 
+        if( !incLimiter( val->limiterWrite.get() ) ) {
+            return Result::E_LIMIT_PER_SEC;
+        }
+
         val->value = value;
         val->counterRecord++;
 
@@ -239,6 +254,10 @@ namespace memsess::core {
             return Result::E_KEY_NONE;
         }
 
+        if( !incLimiter( val->limiterWrite.get() ) ) {
+            return Result::E_LIMIT_PER_SEC;
+        }
+
         val->value = value;
         val->counterRecord++;
 
@@ -260,6 +279,10 @@ namespace memsess::core {
 
         if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
             return Result::E_KEY_NONE;
+        }
+
+        if( !incLimiter( val->limiterRead.get() ) ) {
+            return Result::E_LIMIT_PER_SEC;
         }
 
         value = val->value;
@@ -297,6 +320,68 @@ namespace memsess::core {
                 }
             }
         }
+    }
+
+    bool Store::incLimiter( Limiter *limiter ) {
+        if( limiter == nullptr ) {
+            return true;
+        }
+
+        if( limiter->limit == limiter->count && limiter->ts == getTime() ) {
+            return false;
+        } else if( limiter->ts != getTime() ) {
+            limiter->count = 1;
+        } else {
+            limiter->count++;
+        }
+
+        return true;
+    }
+
+    Store::Result Store::setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit ) {
+        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+            return Result::E_SESSION_NONE;
+        }
+
+        auto sess = _list[sessionId].get();
+
+        if( sess->values.find( key ) == sess->values.end() ) {
+            return Result::E_KEY_NONE;
+        }
+
+        auto val = sess->values[key].get();
+        
+        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
+            return Result::E_KEY_NONE;
+        }
+
+        val->limiterRead = std::make_unique<Limiter>();
+        val->limiterRead->limit = limit;
+
+        return Result::OK;
+    }
+
+    Store::Result Store::setLimitToWritePerSec( const char *sessionId, const char *key, unsigned int limit ) {
+        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+            return Result::E_SESSION_NONE;
+        }
+
+        auto sess = _list[sessionId].get();
+
+        if( sess->values.find( key ) == sess->values.end() ) {
+            return Result::E_KEY_NONE;
+        }
+
+        auto val = sess->values[key].get();
+        
+        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
+            return Result::E_KEY_NONE;
+        }
+
+        val->limiterWrite = std::make_unique<Limiter>();
+        val->limiterWrite->limit = limit;
+
+        return Result::OK;
     }
 }
 

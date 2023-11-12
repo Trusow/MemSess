@@ -1,6 +1,8 @@
 #ifndef MEMSESS_CORE_STORE_ST
 #define MEMSESS_CORE_STORE_ST
 
+#include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <shared_mutex>
 #include <atomic>
@@ -15,6 +17,12 @@ namespace memsess::core {
     class StoreST: public i::StoreInterface {
 
         public:
+            struct Limiter {
+                unsigned long int ts; 
+                unsigned int limit;
+                unsigned int count;
+                std::mutex m;
+            };
  
             struct Value {
                 std::string value;
@@ -22,6 +30,8 @@ namespace memsess::core {
                 std::shared_timed_mutex m;
                 unsigned long int tsEnd;
                 unsigned int counterRecord;
+                std::unique_ptr<Limiter> limiterRead;
+                std::unique_ptr<Limiter> limiterWrite;
             };
  
             struct Item {
@@ -40,6 +50,7 @@ namespace memsess::core {
             unsigned int _count = 0;
             void _wait( std::atomic_uint &atom );
             unsigned long int getTime();
+            bool incLimiter( Limiter *limiter );
  
         public:
             Result generate( unsigned int lifetime, char *sessionId );
@@ -57,6 +68,8 @@ namespace memsess::core {
             void removeKey( const char *sessionId, const char *key );
          
             void clearInactive();
+            Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit );
+            Result setLimitToWritePerSec( const char *sessionId, const char *key, unsigned int limit );
     };
 
     unsigned long int StoreST::getTime() {
@@ -276,6 +289,10 @@ namespace memsess::core {
             return Result::E_RECORD_BEEN_CHANGED;
         }
 
+        if( !incLimiter( val->limiterWrite.get() ) ) {
+            return Result::E_LIMIT_PER_SEC;
+        }
+
         val->value = value;
         val->counterRecord++;
 
@@ -308,6 +325,10 @@ namespace memsess::core {
         util::LockAtomic writersValue( val->writers );
         std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
 
+        if( !incLimiter( val->limiterWrite.get() ) ) {
+            return Result::E_LIMIT_PER_SEC;
+        }
+
         val->value = value;
         val->counterRecord++;
 
@@ -339,6 +360,10 @@ namespace memsess::core {
 
         _wait( val->writers );
         std::shared_lock<std::shared_timed_mutex> lockValue( val->m );
+
+        if( !incLimiter( val->limiterRead.get() ) ) {
+            return Result::E_LIMIT_PER_SEC;
+        }
 
         value = val->value;
         counterRecord = val->counterRecord;
@@ -384,6 +409,88 @@ namespace memsess::core {
                 }
             }
         }
+    }
+
+    bool StoreST::incLimiter( Limiter *limiter ) {
+        if( limiter == nullptr ) {
+            return true;
+        }
+
+        std::lock_guard<std::mutex> lock( limiter->m );
+
+        if( limiter->limit == limiter->count && limiter->ts == getTime() ) {
+            return false;
+        } else if( limiter->ts != getTime() ) {
+            limiter->count = 1;
+        } else {
+            limiter->count++;
+        }
+
+        return true;
+    }
+
+    StoreST::Result StoreST::setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit ) {
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+
+        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+            return Result::E_SESSION_NONE;
+        }
+
+        auto sess = _list[sessionId].get();
+
+        _wait( sess->writers );
+        std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
+
+        if( sess->values.find( key ) == sess->values.end() ) {
+            return Result::E_KEY_NONE;
+        }
+
+        auto val = sess->values[key].get();
+        
+        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
+            return Result::E_KEY_NONE;
+        }
+
+        util::LockAtomic writersValue( val->writers );
+        std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
+
+        val->limiterRead = std::make_unique<Limiter>();
+        val->limiterRead->limit = limit;
+
+        return Result::OK;
+    }
+
+    StoreST::Result StoreST::setLimitToWritePerSec( const char *sessionId, const char *key, unsigned int limit ) {
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+
+        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+            return Result::E_SESSION_NONE;
+        }
+
+        auto sess = _list[sessionId].get();
+
+        _wait( sess->writers );
+        std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
+
+        if( sess->values.find( key ) == sess->values.end() ) {
+            return Result::E_KEY_NONE;
+        }
+
+        auto val = sess->values[key].get();
+        
+        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
+            return Result::E_KEY_NONE;
+        }
+
+        util::LockAtomic writersValue( val->writers );
+        std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
+
+        val->limiterWrite = std::make_unique<Limiter>();
+        val->limiterWrite->limit = limit;
+
+        return Result::OK;
     }
 }
 
