@@ -7,8 +7,12 @@
 #include "../interfaces/server_controller_interface.h"
 #include "../interfaces/store_interface.h"
 #include "../util/uuid.hpp"
+#include "../util/serialization.hpp"
+
 
 namespace memsess::core {
+    using namespace util;
+
     class ServerController: public i::ServerControllerInterface {
         private:
             i::StoreInterface *_store;
@@ -33,7 +37,7 @@ namespace memsess::core {
                 WRONG_PARAMS,
             };
             struct Params {
-                const char *uuid;
+                const char *uuidRaw;
                 const char *key;
                 const char *data;
                 unsigned int dataLength;
@@ -41,27 +45,12 @@ namespace memsess::core {
                 unsigned int lifetime;
                 unsigned int counterKeys;
                 unsigned int counterRecord;
-                unsigned int limit;
+                unsigned short int limitWrite;
+                unsigned short int limitRead;
             };
 
-            unsigned int getLengthKey( const char *data );
-            bool validate( const char *data, unsigned int length, Result &result );
-            bool validateGenerate( unsigned int length );
-            bool validateInit( const char *data, unsigned int length );
-            bool validateRemove( const char *data, unsigned int length );
-            bool validateProlong( const char *data, unsigned int length );
-            bool validateAddKey( const char *data, unsigned int length );
-            bool validateGetKey( const char *data, unsigned int length );
-            bool validateSetKey( const char *data, unsigned int length );
-            bool validateSetForceKey( const char *data, unsigned int length );
-            bool validateRemoveKey( const char *data, unsigned int length );
-            bool validateExistKey( const char *data, unsigned int length );
-            bool validateProlongKey( const char *data, unsigned int length );
-            bool validateSetLimitToRead( const char *data, unsigned int length );
-            bool validateSetLimitToWrite( const char *data, unsigned int length );
-
             void setError( ResultCode code, Result &result );
-            void initParams( const char *data, unsigned int length, Params &params );
+            bool initParams( const char *data, unsigned int length, Params &params );
         public:
             ServerController( i::StoreInterface *store );
             void parse( const char *data, unsigned int length, Result &result );
@@ -78,157 +67,138 @@ namespace memsess::core {
         result.length = 1;
     }
 
-    bool ServerController::validate( const char *data, unsigned int length, Result &result ) {
-        if( length == 0 ) {
-            setError( ResultCode::WRONG_COMMAND, result );
-            return false;
-        }
+    bool ServerController::initParams( const char *data, unsigned int length, Params &params ) {
 
-        bool isValid = true;
-        const char *validateData = &data[1];
-        unsigned int validateDataLength = length - 1;
+        Serialization::Item uuid;
+        uuid.type = Serialization::FIXED_STRING;
+        uuid.length = UUID::LENGTH_RAW;
+
+        Serialization::Item key;
+        uuid.type = Serialization::STRING_WITH_NULL;
+
+        Serialization::Item value;
+        uuid.type = Serialization::STRING;
+
+        Serialization::Item prolong;
+        prolong.type = Serialization::INT;
+
+        Serialization::Item lifetime;
+        lifetime.type = Serialization::INT;
+
+        Serialization::Item counterKeys;
+        counterKeys.type = Serialization::INT;
+
+        Serialization::Item counterRecord;
+        counterRecord.type = Serialization::INT;
+
+        Serialization::Item limitWrite;
+        limitWrite.type = Serialization::SHORT_INT;
+
+        Serialization::Item limitRead;
+        limitRead.type = Serialization::SHORT_INT;
+
+        Serialization::Item end;
+        end.type = Serialization::END;
+
+        Serialization::Item *listGenerate[] = { &prolong, &end };
+        Serialization::Item *listInit[] = { &uuid, &end };
+        Serialization::Item *listProlong[] = { &uuid, &prolong, &end };
+        Serialization::Item *listAddKey[] = { &uuid, &key, &prolong, &limitWrite, &limitRead, &end };
+        Serialization::Item *listKey[] = { &uuid, &key, &end };
+        Serialization::Item *listSetKey[] = { &uuid, &key, &value, &end };
+        Serialization::Item *listProlongKey[] = { &uuid, &key, &prolong, &end };
+        Serialization::Item *listSetWriteLimit[] = { &uuid, &key, &limitWrite, &end };
+        Serialization::Item *listSetReadLimit[] = { &uuid, &key, &limitRead, &end };
 
         switch( data[0] ) {
             case Commands::GENERATE:
-                isValid = validateGenerate( validateDataLength );
+                if( Serialization::unpack( listGenerate, data, length - 1 ) ) {
+                    return false;
+                }
+
+                params.prolong = ( unsigned int )prolong.value_int;
                 break;
             case Commands::INIT:
-                isValid = validateInit( validateData, validateDataLength );
-                break;
             case Commands::REMOVE:
-                isValid = validateRemove( validateData, validateDataLength );
+                if( !Serialization::unpack( listInit, data, length - 1 ) ) {
+                    return false;
+                }
+                params.uuidRaw = uuid.value_string;
                 break;
             case Commands::PROLONG:
-                isValid = validateProlong( validateData, validateDataLength );
+                if( !Serialization::unpack( listProlong, data, length - 1 ) ) {
+                    return false;
+                }
+
+                params.uuidRaw = uuid.value_string;
+                params.prolong = ( unsigned int )prolong.value_int;
                 break;
             case Commands::ADD_KEY:
-                isValid = validateAddKey( validateData, validateDataLength );
+                if( !Serialization::unpack( listAddKey, data, length - 1 ) ) {
+                    return false;
+                }
+
+                params.uuidRaw = uuid.value_string;
+                params.prolong = ( unsigned int )prolong.value_int;
+                params.limitWrite = ( unsigned short int )limitWrite.value_short_int;
+                params.limitRead = ( unsigned short int )limitRead.value_short_int;
                 break;
             case Commands::GET_KEY:
-                isValid = validateGetKey( validateData, validateDataLength );
+            case Commands::REMOVE_KEY:
+            case Commands::EXIST_KEY:
+                if( !Serialization::unpack( listKey, data, length - 1 ) ) {
+                    return false;
+                }
+
+                params.uuidRaw = uuid.value_string;
+                params.key = key.value_string;
                 break;
             case Commands::SET_KEY:
-                isValid = validateSetKey( validateData, validateDataLength );
-                break;
             case Commands::SET_FORCE_KEY:
-                isValid = validateSetForceKey( validateData, validateDataLength );
-                break;
-            case Commands::REMOVE_KEY:
-                isValid = validateRemoveKey( validateData, validateDataLength );
-                break;
-            case Commands::EXIST_KEY:
-                isValid = validateExistKey( validateData, validateDataLength );
+                if( !Serialization::unpack( listSetKey, data, length - 1 ) ) {
+                    return false;
+                }
+
+                params.uuidRaw = uuid.value_string;
+                params.key = key.value_string;
+                params.data = value.value_string;
                 break;
             case Commands::PROLONG_KEY:
-                isValid = validateProlongKey( validateData, validateDataLength );
+                if( !Serialization::unpack( listProlongKey, data, length - 1 ) ) {
+                    return false;
+                }
+
+                if( ( unsigned int )prolong.value_int == 0 ) {
+                    return false;
+                }
+
+                params.uuidRaw = uuid.value_string;
+                params.key = key.value_string;
+                params.prolong = prolong.value_int;
                 break;
             case Commands::SET_LIMIT_PER_SEC_TO_READ:
-                isValid = validateSetLimitToRead( validateData, validateDataLength );
+                if( !Serialization::unpack( listSetReadLimit, data, length - 1 ) ) {
+                    return false;
+                }
+
+                params.uuidRaw = uuid.value_string;
+                params.key = key.value_string;
+                params.limitRead = ( unsigned short int )limitRead.value_short_int;
                 break;
             case Commands::SET_LIMIT_PER_SEC_TO_WRITE:
-                isValid = validateSetLimitToWrite( validateData, validateDataLength );
+                if( !Serialization::unpack( listSetWriteLimit, data, length - 1 ) ) {
+                    return false;
+                }
+
+                params.uuidRaw = uuid.value_string;
+                params.key = key.value_string;
+                params.limitWrite = ( unsigned short int )limitWrite.value_short_int;
                 break;
             default:
-                setError( ResultCode::WRONG_COMMAND, result );
                 return false;
         }
 
-        if( !isValid ) {
-            setError( ResultCode::WRONG_PARAMS, result );
-        }
-
-        return isValid;
-    }
-
-    unsigned int ServerController::getLengthKey( const char *data ) {
-        return 0;
-    }
-
-    bool ServerController::validateGenerate( unsigned int length ) {
-        return length == sizeof( unsigned int );
-    }
-
-    bool ServerController::validateInit( const char *data, unsigned int length ) {
-        return length == util::UUID::LENGTH+1 && data[util::UUID::LENGTH] == 0;
-    }
-
-    bool ServerController::validateRemove( const char *data, unsigned int length ) {
-        return validateInit( data, length );
-    }
-
-    bool ServerController::validateProlong( const char *data, unsigned int length ) {
-        return length == util::UUID::LENGTH+1+sizeof( unsigned int ) && data[util::UUID::LENGTH] == 0;
-    }
-
-    bool ServerController::validateAddKey( const char *data, unsigned int length ) {
-        getLengthKey( &data[util::UUID::LENGTH+1] );
-        return length == util::UUID::LENGTH+1+sizeof( unsigned int ) * 3 && data[util::UUID::LENGTH] == 0;
-    }
-
-    bool ServerController::validateGetKey( const char *data, unsigned int length ) {
-        return false;
-    }
-
-    bool ServerController::validateSetKey( const char *data, unsigned int length ) {
-        return false;
-    }
-
-    bool ServerController::validateSetForceKey( const char *data, unsigned int length ) {
-        return false;
-    }
-
-    bool ServerController::validateRemoveKey( const char *data, unsigned int length ) {
-        return false;
-    }
-
-    bool ServerController::validateExistKey( const char *data, unsigned int length ) {
-        return false;
-    }
-
-    bool ServerController::validateProlongKey( const char *data, unsigned int length ) {
-        return false;
-    }
-
-    bool ServerController::validateSetLimitToRead( const char *data, unsigned int length ) {
-        return false;
-    }
-
-    bool ServerController::validateSetLimitToWrite( const char *data, unsigned int length ) {
-        return false;
-    }
-
-    void ServerController::initParams( const char *data, unsigned int length, Params &params ) {
-        unsigned int prolong;
-        switch( data[0] ) {
-            case Commands::GENERATE:
-                memcpy( &prolong, &data[1], sizeof( unsigned int ) );
-                params.prolong = ntohl( prolong );
-                break;
-            case Commands::INIT:
-            case Commands::REMOVE:
-                params.uuid = &data[1];
-                break;
-            case Commands::PROLONG:
-                params.uuid = &data[1];
-                memcpy( &prolong, &data[1+util::UUID::LENGTH+1], sizeof( unsigned int ) );
-                params.prolong = ntohl( prolong );
-                break;
-            case Commands::ADD_KEY:
-                break;
-            case Commands::GET_KEY:
-            case Commands::REMOVE_KEY:
-            case Commands::EXIST_KEY:
-                break;
-            case Commands::SET_KEY:
-                break;
-            case Commands::SET_FORCE_KEY:
-                break;
-            case Commands::PROLONG_KEY:
-                break;
-            case Commands::SET_LIMIT_PER_SEC_TO_READ:
-            case Commands::SET_LIMIT_PER_SEC_TO_WRITE:
-                break;
-        }
+        return true;
     }
 
     void ServerController::parse( const char *data, unsigned int length, Result &result ) {
@@ -236,14 +206,11 @@ namespace memsess::core {
         result.length = 0;
         Params params;
 
-        if( !validate( data, length, result ) ) {
+        if( !initParams( data, length, params ) ) {
             return;
         }
 
-        initParams( data, length, params );
-        char *uuid;
-        unsigned int counterKeys;
-        unsigned int counterRecord;
+        char uuid[UUID::LENGTH+1] = {};
         std::string value;
 
         switch( data[0] ) {
@@ -253,36 +220,36 @@ namespace memsess::core {
             case Commands::INIT:
                 break;
             case Commands::REMOVE:
-                _store->remove( params.uuid );
+                _store->remove( params.uuidRaw );
                 break;
             case Commands::PROLONG:
-                _store->prolong( params.uuid, params.lifetime );
+                _store->prolong( params.uuidRaw, params.lifetime );
                 break;
             case Commands::ADD_KEY:
-                _store->addKey( params.uuid, params.key, params.data, params.lifetime );
+                _store->addKey( params.uuidRaw, params.key, params.data, params.lifetime );
                 break;
             case Commands::GET_KEY:
-                _store->getKey( params.uuid, params.key, value, counterKeys, counterRecord );
+                _store->getKey( params.uuidRaw, params.key, value, params.counterKeys, params.counterRecord );
                 break;
             case Commands::REMOVE_KEY:
-                _store->removeKey( params.uuid, params.key );
+                _store->removeKey( params.uuidRaw, params.key );
                 break;
             case Commands::EXIST_KEY:
-                _store->existKey( params.uuid, params.key );
+                _store->existKey( params.uuidRaw, params.key );
                 break;
             case Commands::SET_KEY:
-                _store->setKey( params.uuid, params.key, params.data, params.counterKeys, params.counterRecord );
+                _store->setKey( params.uuidRaw, params.key, params.data, params.counterKeys, params.counterRecord );
                 break;
             case Commands::SET_FORCE_KEY:
                 break;
             case Commands::PROLONG_KEY:
-                _store->prolongKey( params.uuid, params.key, params.lifetime );
+                _store->prolongKey( params.uuidRaw, params.key, params.lifetime );
                 break;
             case Commands::SET_LIMIT_PER_SEC_TO_READ:
-                _store->setLimitToReadPerSec( params.uuid, params.key, params.limit );
+                _store->setLimitToReadPerSec( params.uuidRaw, params.key, params.limitWrite );
                 break;
             case Commands::SET_LIMIT_PER_SEC_TO_WRITE:
-                _store->setLimitToWritePerSec( params.uuid, params.key, params.limit );
+                _store->setLimitToWritePerSec( params.uuidRaw, params.key, params.limitRead );
                 break;
         }
     }
