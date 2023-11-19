@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <random>
-#include <iostream>
+#include <memory>
 #include <unistd.h>
 #include "../interfaces/server_controller_interface.h"
 
@@ -21,7 +21,7 @@ namespace memsess::core {
             struct Buffer {
                 unsigned int length;
                 unsigned int wrLength;
-                char *data;
+                std::unique_ptr<char[]> data;
             };
             struct Connection {
                 struct event* readEvent;
@@ -44,6 +44,7 @@ namespace memsess::core {
             static void write( int sock, short what, void *arg );
             static void close( int sock, Connection *conn );
             static void timer( int sock, short what, void *arg );
+            static void clearBuffer( Buffer &buffer );
 
         public:
             Server( unsigned short int port, i::ServerControllerInterface *controller, bool isTimer = false );
@@ -94,13 +95,8 @@ namespace memsess::core {
         event_del( conn->writeEvent );
         event_free( conn->writeEvent );
 
-        if( conn->readBuf.data != nullptr ) {
-            delete[] conn->readBuf.data;
-        }
-
-        if( conn->writeBuf.data != nullptr ) {
-            delete[] conn->writeBuf.data;
-        }
+        clearBuffer( conn->readBuf );
+        clearBuffer( conn->writeBuf  );
 
         delete conn;
 
@@ -109,9 +105,8 @@ namespace memsess::core {
 
     void Server::read( int sock, short what, void *arg ) {
         Connection *conn = (Connection *)arg;
-        auto buf = conn->readBuf;
 
-        if( buf.length == 0 ) {
+        if( conn->readBuf.length == 0 ) {
             auto lengthData = 0;
 
             auto l = ::recv( sock, &lengthData, sizeof( unsigned int ), MSG_NOSIGNAL );
@@ -127,63 +122,79 @@ namespace memsess::core {
                 return;
             }
 
-            buf.length = lengthData;
-            buf.data = new char[lengthData];
+            conn->readBuf.length = lengthData;
+            conn->readBuf.data = std::make_unique<char[]>( lengthData );
         }
 
-        auto l = ::recv( sock, &buf.data[buf.wrLength], buf.length - buf.wrLength, MSG_NOSIGNAL );
+        auto l = ::recv( sock, &conn->readBuf.data.get()[conn->readBuf.wrLength], conn->readBuf.length - conn->readBuf.wrLength, MSG_NOSIGNAL );
 
         if( l <= 0 ) {
             close( sock, conn );
             return;
         }
 
-        buf.wrLength += l;
+        conn->readBuf.wrLength += l;
 
-        if( buf.wrLength == buf.length ) {
-            _controller->parse( buf.data, buf.length );
-            buf.wrLength = 0;
-            buf.length = 0;
-            // callback
-            delete[] buf.data;
-            buf.data = nullptr;
+        if( conn->readBuf.wrLength == conn->readBuf.length ) {
+            unsigned int resultLength = 0;
+            auto result = _controller->parse( conn->readBuf.data.get(), conn->readBuf.length, resultLength );
+            clearBuffer( conn->readBuf );
+
+            if( resultLength == 0 ) {
+                close( sock, conn );
+            } else {
+                conn->writeBuf.data = std::move( result );
+                conn->writeBuf.length = resultLength;
+
+                auto l = ::send( sock, &conn->writeBuf.data[conn->writeBuf.wrLength], conn->writeBuf.length - conn->writeBuf.wrLength, MSG_NOSIGNAL );
+
+                if( l <= 0 ) {
+                    close( sock, conn );
+                    return;
+                }
+
+                conn->writeBuf.wrLength += l;
+
+                if( conn->writeBuf.wrLength == conn->writeBuf.length ) {
+                    clearBuffer( conn->writeBuf );
+                }
+            }
         }
     }
 
     void Server::write( int sock, short what, void *arg ) {
         Connection *conn = (Connection *)arg;
 
-        auto buf = conn->writeBuf;
-
-        if( buf.data == nullptr ) {
+        if( conn->writeBuf.data.get() == nullptr ) {
             return;
         }
 
-        auto l = ::send( sock, &buf.data[buf.wrLength], buf.length - buf.wrLength, MSG_NOSIGNAL );
+        auto l = ::send( sock, &conn->writeBuf.data[conn->writeBuf.wrLength], conn->writeBuf.length - conn->writeBuf.wrLength, MSG_NOSIGNAL );
 
         if( l <= 0 ) {
             close( sock, conn );
             return;
         }
 
-        buf.wrLength += l;
+        conn->writeBuf.wrLength += l;
 
-        if( buf.wrLength == buf.length ) {
-            buf.wrLength = 0;
-            buf.length = 0;
-            delete[] buf.data;
-            buf.data = nullptr;
+        if( conn->writeBuf.wrLength == conn->writeBuf.length ) {
+            clearBuffer( conn->writeBuf );
         }
+    }
+
+    void Server::clearBuffer( Buffer &buffer ) {
+        buffer.wrLength = 0;
+        buffer.length = 0;
+
+        buffer.data.reset();
     }
 
     void Server::timer( int sock, short what, void *arg ) {
         _controller->interval();
-
-        std::cout << "timer" << std::endl;
     }
 
     void Server::accept( int sock, short what, void *arg) {
-        //std::cout << "new connect " << sock << std::endl;
         auto fd = ::accept( sock, 0, 0 );
 
         if( fd < 0 ) {
@@ -222,7 +233,7 @@ namespace memsess::core {
 
         if( _isTimer ) {
             struct timeval time;
-            time.tv_sec = 1;
+            time.tv_sec = 60;
             time.tv_usec = 0;
 
             auto ev = event_new( ( base ), -1, EV_PERSIST, Server::timer, NULL );
