@@ -27,7 +27,11 @@ namespace memsess::i {
                 const char *sessionId,
                 const char *key,
                 const char *value,
-                unsigned int lifetime = 0
+                unsigned int &counterKeys,
+                unsigned int &counterRecord,
+                unsigned int lifetime = 0,
+                unsigned short int limitWrite = 0,
+                unsigned short int limitRead = 0
             ) = 0;
             virtual Result existKey( const char *sessionId, const char *key ) = 0;
             virtual Result prolongKey(
@@ -54,7 +58,7 @@ namespace memsess::i {
                 unsigned int &counterKeys,
                 unsigned int &counterRecord
             ) = 0;
-            virtual void removeKey( const char *sessionId, const char *key ) = 0;
+            virtual Result removeKey( const char *sessionId, const char *key ) = 0;
             virtual Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit ) = 0;
             virtual Result setLimitToWritePerSec( const char *sessionId, const char *key, unsigned int limit ) = 0;
          

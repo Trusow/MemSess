@@ -48,13 +48,22 @@ namespace memsess::core {
             void remove( const char *sessionId );
             Result prolong( const char *sessionId, unsigned int lifetime );
          
-            Result addKey( const char *sessionId, const char *key, const char *value, unsigned int lifetime = 0 );
+            Result addKey(
+                const char *sessionId,
+                const char *key,
+                const char *value,
+                unsigned int &counterKeys,
+                unsigned int &counterRecord,
+                unsigned int lifetime = 0,
+                unsigned short int limitWrite = 0,
+                unsigned short int limitRead = 0
+            );
             Result existKey( const char *sessionId, const char *key );
             Result prolongKey( const char *sessionId, const char *key, unsigned int lifetime );
             Result setKey( const char *sessionId, const char *key, const char *value, unsigned int counterKeys, unsigned int counterRecord );
             Result setForceKey( const char *sessionId, const char *key, const char *value );
             Result getKey( const char *sessionId, const char *key, std::string &value, unsigned int &counterKeys, unsigned int &counterRecord );
-            void removeKey( const char *sessionId, const char *key );
+            Result removeKey( const char *sessionId, const char *key );
             Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit );
             Result setLimitToWritePerSec( const char *sessionId, const char *key, unsigned int limit );
          
@@ -116,26 +125,32 @@ namespace memsess::core {
     }
 
     Store::Result Store::prolong( const char *sessionId, unsigned int lifetime ) {
-        if( lifetime == 0 ) {
-            return Result::E_LIFETIME;
-        }
-
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
 
-        sess->tsEnd = getTime() + lifetime;
+        if( lifetime == 0 ) {
+            sess->tsEnd = 0;
+        } else {
+            sess->tsEnd = getTime() + lifetime;
+        }
 
         return Result::OK;
     }
 
-    Store::Result Store::addKey( const char *sessionId, const char *key, const char *value, unsigned int lifetime ) {
+    Store::Result Store::addKey(
+        const char *sessionId,
+        const char *key,
+        const char *value,
+        unsigned int &counterKeys,
+        unsigned int &counterRecord,
+        unsigned int lifetime,
+        unsigned short int limitWrite,
+        unsigned short int limitRead
+    ) {
         auto tsEndKey = getTime() + lifetime;
-        if( lifetime == 0 ) {
-            return Result::E_LIFETIME;
-        }
 
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
@@ -159,6 +174,18 @@ namespace memsess::core {
             val->tsEnd = tsEndKey;
         }
 
+        if( limitWrite != 0 ) {
+            val->limiterWrite = std::make_unique<Limiter>();
+            val->limiterWrite->limit = limitWrite;
+        }
+
+        if( limitRead != 0 ) {
+            val->limiterRead = std::make_unique<Limiter>();
+            val->limiterRead->limit = limitRead;
+        }
+
+        counterKeys = sess->counterKeys;
+        counterRecord = 0;
         sess->values[key] = std::move( val );
 
         return Result::OK;
@@ -180,9 +207,6 @@ namespace memsess::core {
 
     Store::Result Store::prolongKey( const char *sessionId, const char *key, unsigned int lifetime ) {
         auto tsEndKey = getTime() + lifetime;
-        if( lifetime == 0 ) {
-            return Result::E_LIFETIME;
-        }
 
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
@@ -200,7 +224,11 @@ namespace memsess::core {
 
         auto val = sess->values[key].get();
 
-        val->tsEnd = tsEndKey;
+        if( lifetime == 0 ) {
+            val->tsEnd = 0;
+        } else {
+            val->tsEnd = tsEndKey;
+        }
 
         return Result::OK;
     }
@@ -292,14 +320,15 @@ namespace memsess::core {
         return Result::OK;
     }
 
-    void Store::removeKey( const char *sessionId, const char *key ) {
+    Store::Result Store::removeKey( const char *sessionId, const char *key ) {
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
-            return;
+            return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
 
         sess->values.erase( key );
+        return Result::OK;
     }
 
     void Store::clearInactive() {
@@ -308,7 +337,7 @@ namespace memsess::core {
         for( auto it = _list.begin(); it != _list.end(); ++it ) {
             auto sess = _list[it->first].get();
 
-            if( sess->tsEnd < tsCur ) {
+            if( sess->tsEnd < tsCur && sess->tsEnd != 0 ) {
                 _list.erase( it++ );
                 _count--;
             } else {
@@ -355,8 +384,12 @@ namespace memsess::core {
             return Result::E_KEY_NONE;
         }
 
-        val->limiterRead = std::make_unique<Limiter>();
-        val->limiterRead->limit = limit;
+        if( limit != 0 ) {
+            val->limiterRead = std::make_unique<Limiter>();
+            val->limiterRead->limit = limit;
+        } else {
+            val->limiterRead.reset();
+        }
 
         return Result::OK;
     }
@@ -378,8 +411,12 @@ namespace memsess::core {
             return Result::E_KEY_NONE;
         }
 
-        val->limiterWrite = std::make_unique<Limiter>();
-        val->limiterWrite->limit = limit;
+        if( limit != 0 ) {
+            val->limiterWrite = std::make_unique<Limiter>();
+            val->limiterWrite->limit = limit;
+        } else {
+            val->limiterWrite.reset();
+        }
 
         return Result::OK;
     }

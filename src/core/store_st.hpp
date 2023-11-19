@@ -59,13 +59,22 @@ namespace memsess::core {
             void remove( const char *sessionId );
             Result prolong( const char *sessionId, unsigned int lifetime );
          
-            Result addKey( const char *sessionId, const char *key, const char *value, unsigned int lifetime = 0 );
+            Result addKey(
+                const char *sessionId,
+                const char *key,
+                const char *value,
+                unsigned int &counterKeys,
+                unsigned int &counterRecord,
+                unsigned int lifetime = 0,
+                unsigned short int limitWrite = 0,
+                unsigned short int limitRead = 0
+            );
             Result existKey( const char *sessionId, const char *key );
             Result prolongKey( const char *sessionId, const char *key, unsigned int lifetime );
             Result setKey( const char *sessionId, const char *key, const char *value, unsigned int counterKeys, unsigned int counterRecord );
             Result setForceKey( const char *sessionId, const char *key, const char *value );
             Result getKey( const char *sessionId, const char *key, std::string &value, unsigned int &counterKeys, unsigned int &counterRecord );
-            void removeKey( const char *sessionId, const char *key );
+            Result removeKey( const char *sessionId, const char *key );
          
             void clearInactive();
             Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit );
@@ -142,9 +151,6 @@ namespace memsess::core {
     }
 
     StoreST::Result StoreST::prolong( const char *sessionId, unsigned int lifetime ) {
-        if( lifetime == 0 ) {
-            return Result::E_LIFETIME;
-        }
 
         _wait( _writers );
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
@@ -158,16 +164,26 @@ namespace memsess::core {
         util::LockAtomic writersValues( sess->writers );
         std::lock_guard<std::shared_timed_mutex> lockValues( sess->m );
 
-        sess->tsEnd = getTime() + lifetime;
+        if( lifetime != 0 ) {
+            sess->tsEnd = getTime() + lifetime;
+        } else {
+            sess->tsEnd = 0;
+        }
 
         return Result::OK;
     }
 
-    StoreST::Result StoreST::addKey( const char *sessionId, const char *key, const char *value, unsigned int lifetime ) {
+    StoreST::Result StoreST::addKey(
+        const char *sessionId,
+        const char *key,
+        const char *value,
+        unsigned int &counterKeys,
+        unsigned int &counterRecord,
+        unsigned int lifetime,
+        unsigned short int limitWrite,
+        unsigned short int limitRead
+    ) {
         auto tsEndKey = getTime() + lifetime;
-        if( lifetime == 0 ) {
-            return Result::E_LIFETIME;
-        }
 
         _wait( _writers );
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
@@ -193,10 +209,23 @@ namespace memsess::core {
 
         auto val = std::make_unique<Value>();
         val->value = value;
+
         if( lifetime != 0 ) {
             val->tsEnd = tsEndKey;
         }
 
+        if( limitWrite != 0 ) {
+            val->limiterWrite = std::make_unique<Limiter>();
+            val->limiterWrite->limit = limitWrite;
+        }
+
+        if( limitRead != 0 ) {
+            val->limiterRead = std::make_unique<Limiter>();
+            val->limiterRead->limit = limitRead;
+        }
+
+        counterKeys = sess->counterKeys;
+        counterRecord = 0;
         sess->values[key] = std::move( val );
 
         return Result::OK;
@@ -224,9 +253,6 @@ namespace memsess::core {
 
     StoreST::Result StoreST::prolongKey( const char *sessionId, const char *key, unsigned int lifetime ) {
         auto tsEndKey = getTime() + lifetime;
-        if( lifetime == 0 ) {
-            return Result::E_LIFETIME;
-        }
 
         _wait( _writers );
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
@@ -253,7 +279,11 @@ namespace memsess::core {
         util::LockAtomic writersValue( val->writers );
         std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
 
-        val->tsEnd = tsEndKey;
+        if ( lifetime != 0 ) {
+            val->tsEnd = tsEndKey;
+        } else {
+            val->tsEnd = 0;
+        }
 
         return Result::OK;
     }
@@ -372,12 +402,12 @@ namespace memsess::core {
         return Result::OK;
     }
 
-    void StoreST::removeKey( const char *sessionId, const char *key ) {
+    StoreST::Result StoreST::removeKey( const char *sessionId, const char *key ) {
         _wait( _writers );
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
-            return;
+            return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
@@ -386,6 +416,8 @@ namespace memsess::core {
         std::lock_guard<std::shared_timed_mutex> lockValues( sess->m );
 
         sess->values.erase( key );
+
+        return Result::OK;
     }
 
     void StoreST::clearInactive() {
@@ -397,7 +429,7 @@ namespace memsess::core {
         for( auto it = _list.begin(); it != _list.end(); ++it ) {
             auto sess = _list[it->first].get();
 
-            if( sess->tsEnd < tsCur ) {
+            if( sess->tsEnd < tsCur && sess->tsEnd != 0 ) {
                 _list.erase( it++ );
                 _count--;
             } else {
