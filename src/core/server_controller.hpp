@@ -12,6 +12,7 @@
 
 namespace memsess::core {
     using namespace util;
+    using namespace i;
 
     class ServerController: public i::ServerControllerInterface {
         private:
@@ -49,11 +50,14 @@ namespace memsess::core {
                 unsigned short int limitRead;
             };
 
-            void setError( ResultCode code, Result &result );
             bool initParams( const char *data, unsigned int length, Params &params );
         public:
             ServerController( i::StoreInterface *store );
-            void parse( const char *data, unsigned int length, Result &result );
+            std::unique_ptr<char[]> parse(
+                const char *data,
+                unsigned int length,
+                unsigned int &resultLength
+            );
             void interval();
     };
 
@@ -61,11 +65,6 @@ namespace memsess::core {
         _store = store;
     }
 
-    void ServerController::setError( ResultCode code, Result &result ) {
-        result.data = new char[1];
-        result.data[0] = (char)code;
-        result.length = 1;
-    }
 
     bool ServerController::initParams( const char *data, unsigned int length, Params &params ) {
 
@@ -162,6 +161,7 @@ namespace memsess::core {
                 params.uuidRaw = uuid.value_string;
                 params.key = key.value_string;
                 params.data = value.value_string;
+                params.dataLength = value.length;
                 break;
             case Commands::PROLONG_KEY:
                 if( !Serialization::unpack( listProlongKey, data, length - 1 ) ) {
@@ -201,57 +201,145 @@ namespace memsess::core {
         return true;
     }
 
-    void ServerController::parse( const char *data, unsigned int length, Result &result ) {
-        result.data = nullptr;
-        result.length = 0;
+    std::unique_ptr<char[]> ServerController::parse(
+        const char *data,
+        unsigned int length,
+        unsigned int &resultLength
+    ) {
         Params params;
+        resultLength = 0;
 
-        if( !initParams( data, length, params ) ) {
-            return;
-        }
+        unsigned char cmd = data[0];
 
         char uuid[UUID::LENGTH+1] = {};
         std::string value;
+        unsigned int counterKeys;
+        unsigned int counterRecord;
 
-        switch( data[0] ) {
+        StoreInterface::Result res = StoreInterface::OK;
+
+        Serialization::Item itemResult;
+        itemResult.type = Serialization::CHAR;
+
+        Serialization::Item itemUUID;
+        itemUUID.type = Serialization::FIXED_STRING;
+        itemUUID.length = UUID::LENGTH_RAW;
+
+        Serialization::Item itemValue;
+        itemValue.type = Serialization::STRING;
+
+        Serialization::Item itemValueFinal;
+        itemValueFinal.type = Serialization::STRING;
+
+        Serialization::Item itemCounterKeys;
+        itemCounterKeys.type = Serialization::INT;
+
+        Serialization::Item itemCounterRecord;
+        itemCounterRecord.type = Serialization::INT;
+
+        Serialization::Item itemEnd;
+        itemEnd.type = Serialization::END;
+
+        Serialization::Item *listNone[] = { &itemResult, &itemEnd };
+        Serialization::Item *listGenerate[] = { &itemResult, &itemUUID, &itemEnd };
+        Serialization::Item *listAddKey[] = { &itemResult, &itemCounterKeys, &itemCounterRecord, &itemEnd };
+        Serialization::Item *listGetKey[] = { &itemResult, &itemValue, &itemCounterKeys, &itemCounterRecord, &itemEnd };
+        Serialization::Item *listFinal[] = { &itemValueFinal, &itemEnd };
+
+        if( !initParams( data, length, params ) ) {
+            return std::make_unique<char[]>(0);
+        }
+
+        if( cmd != Commands::GENERATE ) {
+            UUID::toNormal( params.uuidRaw, uuid );
+        }
+
+        switch( cmd ) {
             case Commands::GENERATE:
-                _store->generate( params.lifetime, uuid );
+                res = _store->generate( params.lifetime, uuid );
                 break;
             case Commands::INIT:
+                res = _store->exist( uuid );
                 break;
             case Commands::REMOVE:
                 _store->remove( params.uuidRaw );
                 break;
             case Commands::PROLONG:
-                _store->prolong( params.uuidRaw, params.lifetime );
+                res = _store->prolong( params.uuidRaw, params.lifetime );
                 break;
             case Commands::ADD_KEY:
-                _store->addKey( params.uuidRaw, params.key, params.data, params.lifetime );
+                res = _store->addKey(
+                    params.uuidRaw,
+                    params.key,
+                    params.data,
+                    counterKeys,
+                    counterRecord,
+                    params.lifetime,
+                    params.limitWrite,
+                    params.limitRead
+                );
                 break;
             case Commands::GET_KEY:
-                _store->getKey( params.uuidRaw, params.key, value, params.counterKeys, params.counterRecord );
+                res = _store->getKey( params.uuidRaw, params.key, value, params.counterKeys, params.counterRecord );
                 break;
             case Commands::REMOVE_KEY:
-                _store->removeKey( params.uuidRaw, params.key );
+                res = _store->removeKey( params.uuidRaw, params.key );
                 break;
             case Commands::EXIST_KEY:
-                _store->existKey( params.uuidRaw, params.key );
+                res = _store->existKey( params.uuidRaw, params.key );
                 break;
             case Commands::SET_KEY:
-                _store->setKey( params.uuidRaw, params.key, params.data, params.counterKeys, params.counterRecord );
+                res = _store->setKey(
+                    params.uuidRaw,
+                    params.key,
+                    params.data,
+                    params.dataLength,
+                    params.counterKeys,
+                    params.counterRecord
+                );
                 break;
             case Commands::SET_FORCE_KEY:
+                res = _store->setForceKey( params.uuidRaw, params.key, params.data, params.dataLength );
                 break;
             case Commands::PROLONG_KEY:
-                _store->prolongKey( params.uuidRaw, params.key, params.lifetime );
+                res = _store->prolongKey( params.uuidRaw, params.key, params.lifetime );
                 break;
             case Commands::SET_LIMIT_PER_SEC_TO_READ:
-                _store->setLimitToReadPerSec( params.uuidRaw, params.key, params.limitWrite );
+                res = _store->setLimitToReadPerSec( params.uuidRaw, params.key, params.limitWrite );
                 break;
             case Commands::SET_LIMIT_PER_SEC_TO_WRITE:
-                _store->setLimitToWritePerSec( params.uuidRaw, params.key, params.limitRead );
+                res = _store->setLimitToWritePerSec( params.uuidRaw, params.key, params.limitRead );
                 break;
         }
+
+        itemResult.value_char = res;
+
+        unsigned int localDataLength = 0;
+        std::unique_ptr<char[]> localData;
+
+        if( res != StoreInterface::OK ) {
+            localData = Serialization::pack( ( const Serialization::Item **)listNone, localDataLength );
+        } else if( cmd == Commands::GENERATE ) {
+            itemUUID.value_string = params.uuidRaw;
+            localData = Serialization::pack( ( const Serialization::Item **)listGenerate, localDataLength );
+        } else if( cmd == Commands::ADD_KEY ) {
+            itemCounterKeys.value_int = counterKeys;
+            itemCounterRecord.value_int = counterRecord;
+            localData = Serialization::pack( ( const Serialization::Item **)listAddKey, localDataLength );
+        } else if( cmd == Commands::GET_KEY ) {
+            itemCounterKeys.value_int = counterKeys;
+            itemCounterRecord.value_int = counterRecord;
+            itemValue.value_string = value.c_str();
+            itemValue.length = value.length();
+
+            localData = Serialization::pack( ( const Serialization::Item **)listGetKey, localDataLength );
+        } else {
+            localData = Serialization::pack( ( const Serialization::Item **)listNone, localDataLength );
+        }
+
+        itemValueFinal.length = localDataLength;
+        itemValueFinal.value_string = localData.get();
+        return Serialization::pack( ( const Serialization::Item **)listFinal, resultLength );
     }
 
     void ServerController::interval() {
