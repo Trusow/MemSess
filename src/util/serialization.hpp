@@ -28,27 +28,27 @@ namespace memsess::util {
             };
 
 
-            static std::unique_ptr<char[]> pack( const Item *items, unsigned int &resultLength );
+            static std::unique_ptr<char[]> pack( const Item **items, unsigned int &resultLength );
             static bool unpack( Item **items, const char *data, unsigned int length );
     };
 
-    std::unique_ptr<char[]> Serialization::pack( const Item *items, unsigned int &resultLength ) {
+    std::unique_ptr<char[]> Serialization::pack( const Item **items, unsigned int &resultLength ) {
         resultLength = 0;
 
-        for( unsigned int i = 0; items[i].type != END; i++ ) {
+        for( unsigned int i = 0; items[i]->type != END; i++ ) {
             auto item = items[i];
 
-            switch( item.type ) {
+            switch( item->type ) {
                 case CHAR:
-                    resultLength += item.length + sizeof( bool );
+                    resultLength += item->length + sizeof( bool );
                 case STRING:
-                    resultLength += item.length + sizeof( int );
+                    resultLength += item->length + sizeof( int );
                     break;
                 case FIXED_STRING:
-                    resultLength += item.length;
+                    resultLength += item->length;
                     break;
                 case STRING_WITH_NULL:
-                    resultLength += strlen( item.value_string ) + 1;
+                    resultLength += strlen( item->value_string ) + 1;
                     break;
                 case SHORT_INT:
                     resultLength += sizeof( short int );
@@ -66,44 +66,44 @@ namespace memsess::util {
         char null = 0;
         auto data = std::make_unique<char[]>(resultLength);
 
-        for( unsigned int i = 0; items[i].type != END; i++ ) {
+        for( unsigned int i = 0; items[i]->type != END; i++ ) {
             auto item = items[i];
 
-            switch( item.type ) {
+            switch( item->type ) {
                 case CHAR:
-                    data[offset] = item.value_char;
+                    data[offset] = item->value_char;
                     offset += sizeof( char );
                     break;
                 case STRING:
-                    length = htonl( item.length );
+                    length = htonl( item->length );
 
                     memcpy( &data[offset], &length, sizeof( int ) );
                     offset += sizeof( int );
 
-                    memcpy( &data[offset], item.value_string, item.length );
-                    offset += item.length;
+                    memcpy( &data[offset], item->value_string, item->length );
+                    offset += item->length;
                     break;
                 case FIXED_STRING:
-                    memcpy( &data[offset], item.value_string, item.length );
-                    offset += item.length;
+                    memcpy( &data[offset], item->value_string, item->length );
+                    offset += item->length;
                     break;
                 case STRING_WITH_NULL:
-                    length = strlen( item.value_string );
+                    length = strlen( item->value_string );
 
-                    memcpy( &data[offset], item.value_string, length );
+                    memcpy( &data[offset], item->value_string, length );
                     offset += length;
 
                     memcpy( &data[offset], &null, 1 );
                     offset += 1;
                     break;
                 case SHORT_INT:
-                    value_short_int = htons( item.value_short_int );
+                    value_short_int = htons( item->value_short_int );
 
                     memcpy( &data[offset], &value_short_int, sizeof( short int ) );
                     offset += sizeof( short int );
                     break;
                 case INT:
-                    value_int = htonl( item.value_int );
+                    value_int = htonl( item->value_int );
 
                     memcpy( &data[offset], &value_int, sizeof( int ) );
                     offset += sizeof( int );
