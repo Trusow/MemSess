@@ -9,7 +9,7 @@ namespace memsess::util {
     class Serialization {
         public:
             enum Type {
-                BOOL,
+                CHAR,
                 STRING,
                 FIXED_STRING,
                 STRING_WITH_NULL,
@@ -20,7 +20,7 @@ namespace memsess::util {
 
             struct Item {
                 Type type;
-                bool value_bool;
+                char value_char;
                 const char *value_string;
                 short int value_short_int;
                 int value_int;
@@ -39,7 +39,7 @@ namespace memsess::util {
             auto item = items[i];
 
             switch( item.type ) {
-                case BOOL:
+                case CHAR:
                     resultLength += item.length + sizeof( bool );
                 case STRING:
                     resultLength += item.length + sizeof( int );
@@ -70,9 +70,9 @@ namespace memsess::util {
             auto item = items[i];
 
             switch( item.type ) {
-                case BOOL:
-                    data[offset] = item.value_bool;
-                    offset += sizeof( bool );
+                case CHAR:
+                    data[offset] = item.value_char;
+                    offset += sizeof( char );
                     break;
                 case STRING:
                     length = htonl( item.length );
@@ -128,9 +128,9 @@ namespace memsess::util {
             auto item = items[i];
 
             switch( item->type ) {
-                case BOOL:
-                    item->value_bool = data[offset];
-                    offset += sizeof( bool );
+                case CHAR:
+                    item->value_char = data[offset];
+                    offset += sizeof( char );
                     break;
                 case STRING:
                     if( offset + sizeof( int ) > length ) {
