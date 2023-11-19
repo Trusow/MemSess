@@ -60,8 +60,20 @@ namespace memsess::core {
             );
             Result existKey( const char *sessionId, const char *key );
             Result prolongKey( const char *sessionId, const char *key, unsigned int lifetime );
-            Result setKey( const char *sessionId, const char *key, const char *value, unsigned int counterKeys, unsigned int counterRecord );
-            Result setForceKey( const char *sessionId, const char *key, const char *value );
+            Result setKey(
+                const char *sessionId,
+                const char *key,
+                const char *value,
+                unsigned int length,
+                unsigned int counterKeys,
+                unsigned int counterRecord
+            );
+            Result setForceKey(
+                const char *sessionId,
+                const char *key,
+                const char *value,
+                unsigned int length
+            );
             Result getKey( const char *sessionId, const char *key, std::string &value, unsigned int &counterKeys, unsigned int &counterRecord );
             Result removeKey( const char *sessionId, const char *key );
             Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit );
@@ -234,7 +246,14 @@ namespace memsess::core {
     }
 
 
-    Store::Result Store::setKey( const char *sessionId, const char *key, const char *value, unsigned int counterKeys, unsigned int counterRecord ) {
+    Store::Result Store::setKey(
+        const char *sessionId,
+        const char *key,
+        const char *value,
+        unsigned int length,
+        unsigned int counterKeys,
+        unsigned int counterRecord
+    ) {
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
@@ -259,13 +278,18 @@ namespace memsess::core {
             return Result::E_LIMIT_PER_SEC;
         }
 
-        val->value = value;
+        val->value = std::string( value, length );
         val->counterRecord++;
 
         return Result::OK;
     }
 
-    Store::Result Store::setForceKey( const char *sessionId, const char *key, const char *value ) {
+    Store::Result Store::setForceKey(
+        const char *sessionId,
+        const char *key,
+        const char *value,
+        unsigned int length
+    ) {
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
@@ -286,7 +310,7 @@ namespace memsess::core {
             return Result::E_LIMIT_PER_SEC;
         }
 
-        val->value = value;
+        val->value = std::string( value, length );
         val->counterRecord++;
 
         return Result::OK;

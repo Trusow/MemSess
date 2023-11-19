@@ -71,8 +71,20 @@ namespace memsess::core {
             );
             Result existKey( const char *sessionId, const char *key );
             Result prolongKey( const char *sessionId, const char *key, unsigned int lifetime );
-            Result setKey( const char *sessionId, const char *key, const char *value, unsigned int counterKeys, unsigned int counterRecord );
-            Result setForceKey( const char *sessionId, const char *key, const char *value );
+            Result setKey(
+                const char *sessionId,
+                const char *key,
+                const char *value,
+                unsigned int length,
+                unsigned int counterKeys,
+                unsigned int counterRecord
+            );
+            Result setForceKey(
+                const char *sessionId,
+                const char *key,
+                const char *value,
+                unsigned int length
+            );
             Result getKey( const char *sessionId, const char *key, std::string &value, unsigned int &counterKeys, unsigned int &counterRecord );
             Result removeKey( const char *sessionId, const char *key );
          
@@ -289,7 +301,14 @@ namespace memsess::core {
     }
 
 
-    StoreST::Result StoreST::setKey( const char *sessionId, const char *key, const char *value, unsigned int counterKeys, unsigned int counterRecord ) {
+    StoreST::Result StoreST::setKey(
+        const char *sessionId,
+        const char *key,
+        const char *value,
+        unsigned int length,
+        unsigned int counterKeys,
+        unsigned int counterRecord
+    ) {
         _wait( _writers );
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 
@@ -323,13 +342,18 @@ namespace memsess::core {
             return Result::E_LIMIT_PER_SEC;
         }
 
-        val->value = value;
+        val->value = std::string( value, length );
         val->counterRecord++;
 
         return Result::OK;
     }
 
-    StoreST::Result StoreST::setForceKey( const char *sessionId, const char *key, const char *value ) {
+    StoreST::Result StoreST::setForceKey(
+        const char *sessionId,
+        const char *key,
+        const char *value,
+        unsigned int length
+    ) {
         _wait( _writers );
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 
@@ -359,7 +383,7 @@ namespace memsess::core {
             return Result::E_LIMIT_PER_SEC;
         }
 
-        val->value = value;
+        val->value = std::string( value, length );
         val->counterRecord++;
 
         return Result::OK;

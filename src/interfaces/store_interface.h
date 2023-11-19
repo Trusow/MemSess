@@ -43,13 +43,15 @@ namespace memsess::i {
                 const char *sessionId,
                 const char *key,
                 const char *value,
+                unsigned int length,
                 unsigned int counterKeys,
                 unsigned int counterRecord
             ) = 0;
             virtual Result setForceKey(
                 const char *sessionId,
                 const char *key,
-                const char *value
+                const char *value,
+                unsigned int length
             ) = 0;
             virtual Result getKey(
                 const char *sessionId,
