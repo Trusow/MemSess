@@ -450,17 +450,20 @@ namespace memsess::core {
 
         auto tsCur = getTime();
 
-        for( auto it = _list.begin(); it != _list.end(); ++it ) {
+        for( auto it = _list.begin(); it != _list.end(); ) {
             auto sess = _list[it->first].get();
 
             if( sess->tsEnd < tsCur && sess->tsEnd != 0 ) {
-                _list.erase( it++ );
+                it = _list.erase( it );
                 _count--;
             } else {
-                for( auto itV = sess->values.begin(); itV != sess->values.end(); ++itV ) {
+                ++it;
+                for( auto itV = sess->values.begin(); itV != sess->values.end(); ) {
                     auto val = sess->values[itV->first].get();
                     if( val->tsEnd != 0 && val->tsEnd < tsCur ) {
-                        sess->values.erase( itV++ );
+                        itV = sess->values.erase( itV );
+                    } else {
+                        ++itV;
                     }
                 }
             }
