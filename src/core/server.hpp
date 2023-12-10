@@ -123,6 +123,7 @@ namespace memsess::core {
             }
 
             conn->readBuf.length = lengthData;
+            conn->readBuf.wrLength = 0;
             conn->readBuf.data = std::make_unique<char[]>( lengthData );
         }
 
