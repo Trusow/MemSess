@@ -144,7 +144,7 @@ namespace memsess::core {
         auto sess = _list[sessionId].get();
 
         if( lifetime == 0 ) {
-            sess->tsEnd = 0;
+            sess->tsEnd = 0xFFFFFFFF;
         } else {
             sess->tsEnd = getTime() + lifetime;
         }
@@ -361,7 +361,7 @@ namespace memsess::core {
         for( auto it = _list.begin(); it != _list.end(); ) {
             auto sess = _list[it->first].get();
 
-            if( sess->tsEnd < tsCur && sess->tsEnd != 0 ) {
+            if( sess->tsEnd < tsCur ) {
                 it = _list.erase( it );
                 _count--;
             } else {
