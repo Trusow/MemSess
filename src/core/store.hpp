@@ -142,6 +142,8 @@ namespace memsess::core {
 
         if( lifetime != 0 ) {
             item->tsEnd = getTime() + lifetime;
+        } else {
+            item->tsEnd = 0xFFFFFFFF;
         }
 
         _list[sessionId] = std::move( item );
