@@ -130,10 +130,6 @@ namespace memsess::core {
             return Result::E_LIMIT;
         }
 
-        if( lifetime == 0 ) {
-            return Result::E_LIFETIME;
-        }
-
         while( true ) {
             util::UUID::generate( sessionId );
 
@@ -143,7 +139,10 @@ namespace memsess::core {
         }
 
         auto item = std::make_unique<Item>();
-        item->tsEnd = getTime() + lifetime;
+
+        if( lifetime != 0 ) {
+            item->tsEnd = getTime() + lifetime;
+        }
 
         _list[sessionId] = std::move( item );
         _count++;
