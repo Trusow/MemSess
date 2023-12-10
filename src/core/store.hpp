@@ -386,6 +386,7 @@ namespace memsess::core {
         if( limiter->limit == limiter->count && limiter->ts == getTime() ) {
             return false;
         } else if( limiter->ts != getTime() ) {
+            limiter->ts = getTime();
             limiter->count = 1;
         } else {
             limiter->count++;
