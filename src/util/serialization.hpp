@@ -40,7 +40,8 @@ namespace memsess::util {
 
             switch( item->type ) {
                 case CHAR:
-                    resultLength += item->length + sizeof( bool );
+                    resultLength += sizeof( char );
+                    break;
                 case STRING:
                     resultLength += item->length + sizeof( int );
                     break;
