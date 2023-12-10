@@ -1,27 +1,45 @@
-#ifndef MEMSESS_CORE_STORE
-#define MEMSESS_CORE_STORE
+#ifndef MEMSESS_CORE_STORE_ST
+#define MEMSESS_CORE_STORE_ST
 
+#include <memory>
 #include <unordered_map>
+
+#if MEMSESS_MULTI
+#include <mutex>
 #include <shared_mutex>
+#include <atomic>
+#endif
+
 #include <string>
 #include <string.h>
 #include <time.h>
 #include "../interfaces/store_interface.h"
 #include "../util/uuid.hpp"
 
+#if MEMSESS_MULTI
+#include "../util/lock_atomic.hpp"
+#endif
+
+
 namespace memsess::core {
     class Store: public i::StoreInterface {
 
         public:
-
             struct Limiter {
                 unsigned long int ts; 
                 unsigned int limit;
                 unsigned int count;
+#if MEMSESS_MULTI
+                std::mutex m;
+#endif
             };
  
             struct Value {
                 std::string value;
+#if MEMSESS_MULTI
+                std::atomic_uint writers;
+                std::shared_timed_mutex m;
+#endif
                 unsigned long int tsEnd;
                 unsigned int counterRecord;
                 std::unique_ptr<Limiter> limiterRead;
@@ -30,14 +48,25 @@ namespace memsess::core {
  
             struct Item {
                 std::unordered_map<std::string, std::unique_ptr<Value>> values;
+#if MEMSESS_MULTI
+                std::atomic_uint writers;
+                std::shared_timed_mutex m;
+#endif
                 unsigned int counterKeys;
                 unsigned long int tsEnd;
             };
  
         private:
             std::unordered_map<std::string, std::unique_ptr<Item>> _list;
+#if MEMSESS_MULTI
+            std::atomic_uint _writers{0};
+            std::shared_timed_mutex _m;
+#endif
             unsigned int _limit;
             unsigned int _count = 0;
+#if MEMSESS_MULTI
+            void _wait( std::atomic_uint &atom );
+#endif
             unsigned long int getTime();
             bool incLimiter( Limiter *limiter );
  
@@ -76,17 +105,27 @@ namespace memsess::core {
             );
             Result getKey( const char *sessionId, const char *key, std::string &value, unsigned int &counterKeys, unsigned int &counterRecord );
             Result removeKey( const char *sessionId, const char *key );
-            Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit );
-            Result setLimitToWritePerSec( const char *sessionId, const char *key, unsigned int limit );
          
             void clearInactive();
+            Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit );
+            Result setLimitToWritePerSec( const char *sessionId, const char *key, unsigned int limit );
     };
 
     unsigned long int Store::getTime() {
         return time( NULL );
     }
 
+#if MEMSESS_MULTI
+    void Store::_wait( std::atomic_uint &atom ) {
+        while( atom );
+    }
+#endif
+
     Store::Result Store::generate( unsigned int lifetime, char *sessionId ) {
+#if MEMSESS_MULTI
+        util::LockAtomic lock( _writers );
+        std::lock_guard<std::shared_timed_mutex> lockList( _m );
+#endif
         if( ( _count == _limit && _limit != 0 ) || _count == 0xFF'FF'FF'FF ) {
             return Result::E_LIMIT;
         }
@@ -113,6 +152,11 @@ namespace memsess::core {
     }
 
     Store::Result Store::exist( const char *sessionId ) {
+#if MEMSESS_MULTI
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( _list.find( sessionId ) != _list.end() ) {
             return Result::OK;
         }
@@ -121,6 +165,11 @@ namespace memsess::core {
     }
 
     void Store::setLimit( unsigned int limit ) {
+#if MEMSESS_MULTI
+        util::LockAtomic lock( _writers );
+        std::lock_guard<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( limit == 0 ) {
             _count = 0;
         }
@@ -129,6 +178,11 @@ namespace memsess::core {
     }
 
     void Store::remove( const char *sessionId ) {
+#if MEMSESS_MULTI
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return;
         }
@@ -137,16 +191,26 @@ namespace memsess::core {
     }
 
     Store::Result Store::prolong( const char *sessionId, unsigned int lifetime ) {
+#if MEMSESS_MULTI
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
 
-        if( lifetime == 0 ) {
-            sess->tsEnd = 0xFFFFFFFF;
-        } else {
+#if MEMSESS_MULTI
+        util::LockAtomic writersValues( sess->writers );
+        std::lock_guard<std::shared_timed_mutex> lockValues( sess->m );
+#endif
+
+        if( lifetime != 0 ) {
             sess->tsEnd = getTime() + lifetime;
+        } else {
+            sess->tsEnd = 0xFFFFFFFF;
         }
 
         return Result::OK;
@@ -164,6 +228,11 @@ namespace memsess::core {
     ) {
         auto tsEndKey = getTime() + lifetime;
 
+#if MEMSESS_MULTI
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
@@ -174,6 +243,11 @@ namespace memsess::core {
             return Result::E_LIFETIME;
         }
 
+#if MEMSESS_MULTI
+        util::LockAtomic writersValues( sess->writers );
+        std::lock_guard<std::shared_timed_mutex> lockValues( sess->m );
+#endif
+
         if( sess->values.find( key ) != sess->values.end() ) {
             return Result::E_DUPLICATE_KEY;
         }
@@ -182,6 +256,7 @@ namespace memsess::core {
 
         auto val = std::make_unique<Value>();
         val->value = value;
+
         if( lifetime != 0 ) {
             val->tsEnd = tsEndKey;
         }
@@ -204,11 +279,21 @@ namespace memsess::core {
     }
 
     Store::Result Store::existKey( const char *sessionId, const char *key ) {
+#if MEMSESS_MULTI
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
+
+#if MEMSESS_MULTI
+        _wait( sess->writers );
+        std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
+#endif
 
         if( sess->values.find( key ) != sess->values.end() ) {
             return Result::E_KEY_NONE;
@@ -220,6 +305,11 @@ namespace memsess::core {
     Store::Result Store::prolongKey( const char *sessionId, const char *key, unsigned int lifetime ) {
         auto tsEndKey = getTime() + lifetime;
 
+#if MEMSESS_MULTI
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
@@ -230,16 +320,26 @@ namespace memsess::core {
             return Result::E_LIFETIME;
         }
 
+#if MEMSESS_MULTI
+        _wait( sess->writers );
+        std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
+#endif
+
         if( sess->values.find( key ) == sess->values.end() ) {
             return Result::E_KEY_NONE;
         }
 
         auto val = sess->values[key].get();
 
-        if( lifetime == 0 ) {
-            val->tsEnd = 0;
-        } else {
+#if MEMSESS_MULTI
+        util::LockAtomic writersValue( val->writers );
+        std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
+#endif
+
+        if ( lifetime != 0 ) {
             val->tsEnd = tsEndKey;
+        } else {
+            val->tsEnd = 0;
         }
 
         return Result::OK;
@@ -254,11 +354,21 @@ namespace memsess::core {
         unsigned int counterKeys,
         unsigned int counterRecord
     ) {
+#if MEMSESS_MULTI
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
+
+#if MEMSESS_MULTI
+        _wait( sess->writers );
+        std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
+#endif
 
         if( sess->values.find( key ) == sess->values.end() ) {
             return Result::E_KEY_NONE;
@@ -269,6 +379,11 @@ namespace memsess::core {
         if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
             return Result::E_KEY_NONE;
         }
+
+#if MEMSESS_MULTI
+        util::LockAtomic writersValue( val->writers );
+        std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
+#endif
 
         if( val->counterRecord != counterRecord || sess->counterKeys != counterKeys ) {
             return Result::E_RECORD_BEEN_CHANGED;
@@ -290,11 +405,21 @@ namespace memsess::core {
         const char *value,
         unsigned int length
     ) {
+#if MEMSESS_MULTI
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
+
+#if MEMSESS_MULTI
+        _wait( sess->writers );
+        std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
+#endif
 
         if( sess->values.find( key ) == sess->values.end() ) {
             return Result::E_KEY_NONE;
@@ -305,6 +430,11 @@ namespace memsess::core {
         if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
             return Result::E_KEY_NONE;
         }
+
+#if MEMSESS_MULTI
+        util::LockAtomic writersValue( val->writers );
+        std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
+#endif
 
         if( !incLimiter( val->limiterWrite.get() ) ) {
             return Result::E_LIMIT_PER_SEC;
@@ -317,11 +447,21 @@ namespace memsess::core {
     }
 
     Store::Result Store::getKey( const char *sessionId, const char *key, std::string &value, unsigned int &counterKeys, unsigned int &counterRecord ) {
+#if MEMSESS_MULTI
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
+
+#if MEMSESS_MULTI
+        _wait( sess->writers );
+        std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
+#endif
 
         if( sess->values.find( key ) == sess->values.end() ) {
             return Result::E_KEY_NONE;
@@ -332,6 +472,11 @@ namespace memsess::core {
         if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
             return Result::E_KEY_NONE;
         }
+
+#if MEMSESS_MULTI
+        _wait( val->writers );
+        std::shared_lock<std::shared_timed_mutex> lockValue( val->m );
+#endif
 
         if( !incLimiter( val->limiterRead.get() ) ) {
             return Result::E_LIMIT_PER_SEC;
@@ -345,17 +490,33 @@ namespace memsess::core {
     }
 
     Store::Result Store::removeKey( const char *sessionId, const char *key ) {
+#if MEMSESS_MULTI
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
 
+#if MEMSESS_MULTI
+        util::LockAtomic writersValues( sess->writers );
+        std::lock_guard<std::shared_timed_mutex> lockValues( sess->m );
+#endif
+
         sess->values.erase( key );
+
         return Result::OK;
     }
 
     void Store::clearInactive() {
+#if MEMSESS_MULTI
+        util::LockAtomic lock( _writers );
+        std::lock_guard<std::shared_timed_mutex> lockList( _m );
+#endif
+
         auto tsCur = getTime();
 
         for( auto it = _list.begin(); it != _list.end(); ) {
@@ -383,6 +544,10 @@ namespace memsess::core {
             return true;
         }
 
+#if MEMSESS_MULTI
+        std::lock_guard<std::mutex> lock( limiter->m );
+#endif
+
         if( limiter->limit == limiter->count && limiter->ts == getTime() ) {
             return false;
         } else if( limiter->ts != getTime() ) {
@@ -396,11 +561,21 @@ namespace memsess::core {
     }
 
     Store::Result Store::setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit ) {
+#if MEMSESS_MULTI
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
+
+#if MEMSESS_MULTI
+        _wait( sess->writers );
+        std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
+#endif
 
         if( sess->values.find( key ) == sess->values.end() ) {
             return Result::E_KEY_NONE;
@@ -412,22 +587,33 @@ namespace memsess::core {
             return Result::E_KEY_NONE;
         }
 
-        if( limit != 0 ) {
-            val->limiterRead = std::make_unique<Limiter>();
-            val->limiterRead->limit = limit;
-        } else {
-            val->limiterRead.reset();
-        }
+#if MEMSESS_MULTI
+        util::LockAtomic writersValue( val->writers );
+        std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
+#endif
+
+        val->limiterRead = std::make_unique<Limiter>();
+        val->limiterRead->limit = limit;
 
         return Result::OK;
     }
 
     Store::Result Store::setLimitToWritePerSec( const char *sessionId, const char *key, unsigned int limit ) {
+#if MEMSESS_MULTI
+        _wait( _writers );
+        std::shared_lock<std::shared_timed_mutex> lockList( _m );
+#endif
+
         if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
             return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
+
+#if MEMSESS_MULTI
+        _wait( sess->writers );
+        std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
+#endif
 
         if( sess->values.find( key ) == sess->values.end() ) {
             return Result::E_KEY_NONE;
@@ -439,12 +625,13 @@ namespace memsess::core {
             return Result::E_KEY_NONE;
         }
 
-        if( limit != 0 ) {
-            val->limiterWrite = std::make_unique<Limiter>();
-            val->limiterWrite->limit = limit;
-        } else {
-            val->limiterWrite.reset();
-        }
+#if MEMSESS_MULTI
+        util::LockAtomic writersValue( val->writers );
+        std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
+#endif
+
+        val->limiterWrite = std::make_unique<Limiter>();
+        val->limiterWrite->limit = limit;
 
         return Result::OK;
     }
