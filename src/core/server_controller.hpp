@@ -322,10 +322,10 @@ namespace memsess::core {
                 res = _store->prolongKey( uuid, params.key, params.lifetime );
                 break;
             case Commands::SET_LIMIT_PER_SEC_TO_READ:
-                res = _store->setLimitToReadPerSec( uuid, params.key, params.limitWrite );
+                res = _store->setLimitToReadPerSec( uuid, params.key, params.limitRead );
                 break;
             case Commands::SET_LIMIT_PER_SEC_TO_WRITE:
-                res = _store->setLimitToWritePerSec( uuid, params.key, params.limitRead );
+                res = _store->setLimitToWritePerSec( uuid, params.key, params.limitWrite );
                 break;
         }
 
