@@ -42,7 +42,6 @@ namespace memsess::core {
                 const char *key;
                 const char *data;
                 unsigned int dataLength;
-                unsigned int prolong;
                 unsigned int lifetime;
                 unsigned int counterKeys;
                 unsigned int counterRecord;
@@ -73,10 +72,10 @@ namespace memsess::core {
         uuid.length = UUID::LENGTH_RAW;
 
         Serialization::Item key;
-        uuid.type = Serialization::STRING_WITH_NULL;
+        key.type = Serialization::STRING_WITH_NULL;
 
         Serialization::Item value;
-        uuid.type = Serialization::STRING;
+        value.type = Serialization::STRING;
 
         Serialization::Item prolong;
         prolong.type = Serialization::INT;
@@ -102,59 +101,75 @@ namespace memsess::core {
         Serialization::Item *listGenerate[] = { &prolong, &end };
         Serialization::Item *listInit[] = { &uuid, &end };
         Serialization::Item *listProlong[] = { &uuid, &prolong, &end };
-        Serialization::Item *listAddKey[] = { &uuid, &key, &prolong, &limitWrite, &limitRead, &end };
+        Serialization::Item *listAddKey[] = { &uuid, &key, &value, &prolong, &limitRead, &limitWrite, &end };
         Serialization::Item *listKey[] = { &uuid, &key, &end };
-        Serialization::Item *listSetKey[] = { &uuid, &key, &value, &end };
+        Serialization::Item *listSetKey[] = { &uuid, &key, &value, &counterKeys, &counterRecord, &end };
+        Serialization::Item *listSetForceKey[] = { &uuid, &key, &value, &end };
         Serialization::Item *listProlongKey[] = { &uuid, &key, &prolong, &end };
         Serialization::Item *listSetWriteLimit[] = { &uuid, &key, &limitWrite, &end };
         Serialization::Item *listSetReadLimit[] = { &uuid, &key, &limitRead, &end };
 
         switch( data[0] ) {
             case Commands::GENERATE:
-                if( Serialization::unpack( listGenerate, data, length - 1 ) ) {
+                if( !Serialization::unpack( listGenerate, &data[1], length - 1 ) ) {
                     return false;
                 }
 
-                params.prolong = ( unsigned int )prolong.value_int;
+                params.lifetime = ( unsigned int )prolong.value_int;
                 break;
             case Commands::INIT:
             case Commands::REMOVE:
-                if( !Serialization::unpack( listInit, data, length - 1 ) ) {
+                if( !Serialization::unpack( listInit, &data[1], length - 1 ) ) {
                     return false;
                 }
                 params.uuidRaw = uuid.value_string;
                 break;
             case Commands::PROLONG:
-                if( !Serialization::unpack( listProlong, data, length - 1 ) ) {
+                if( !Serialization::unpack( listProlong, &data[1], length - 1 ) ) {
                     return false;
                 }
 
                 params.uuidRaw = uuid.value_string;
-                params.prolong = ( unsigned int )prolong.value_int;
+                params.lifetime = ( unsigned int )prolong.value_int;
                 break;
             case Commands::ADD_KEY:
-                if( !Serialization::unpack( listAddKey, data, length - 1 ) ) {
+                if( !Serialization::unpack( listAddKey, &data[1], length - 1 ) ) {
                     return false;
                 }
 
+
+                params.key = key.value_string;
+                params.data = value.value_string;
                 params.uuidRaw = uuid.value_string;
-                params.prolong = ( unsigned int )prolong.value_int;
+                params.lifetime = ( unsigned int )prolong.value_int;
                 params.limitWrite = ( unsigned short int )limitWrite.value_short_int;
                 params.limitRead = ( unsigned short int )limitRead.value_short_int;
                 break;
             case Commands::GET_KEY:
             case Commands::REMOVE_KEY:
             case Commands::EXIST_KEY:
-                if( !Serialization::unpack( listKey, data, length - 1 ) ) {
+                if( !Serialization::unpack( listKey, &data[1], length - 1 ) ) {
                     return false;
                 }
+
 
                 params.uuidRaw = uuid.value_string;
                 params.key = key.value_string;
                 break;
             case Commands::SET_KEY:
+                if( !Serialization::unpack( listSetKey, &data[1], length - 1 ) ) {
+                    return false;
+                }
+
+                params.uuidRaw = uuid.value_string;
+                params.key = key.value_string;
+                params.data = value.value_string;
+                params.dataLength = value.length;
+                params.counterKeys = counterKeys.value_int;
+                params.counterRecord = counterRecord.value_int;
+                break;
             case Commands::SET_FORCE_KEY:
-                if( !Serialization::unpack( listSetKey, data, length - 1 ) ) {
+                if( !Serialization::unpack( listSetForceKey, &data[1], length - 1 ) ) {
                     return false;
                 }
 
@@ -164,7 +179,7 @@ namespace memsess::core {
                 params.dataLength = value.length;
                 break;
             case Commands::PROLONG_KEY:
-                if( !Serialization::unpack( listProlongKey, data, length - 1 ) ) {
+                if( !Serialization::unpack( listProlongKey, &data[1], length - 1 ) ) {
                     return false;
                 }
 
@@ -174,10 +189,10 @@ namespace memsess::core {
 
                 params.uuidRaw = uuid.value_string;
                 params.key = key.value_string;
-                params.prolong = prolong.value_int;
+                params.lifetime = prolong.value_int;
                 break;
             case Commands::SET_LIMIT_PER_SEC_TO_READ:
-                if( !Serialization::unpack( listSetReadLimit, data, length - 1 ) ) {
+                if( !Serialization::unpack( listSetReadLimit, &data[1], length - 1 ) ) {
                     return false;
                 }
 
@@ -186,7 +201,7 @@ namespace memsess::core {
                 params.limitRead = ( unsigned short int )limitRead.value_short_int;
                 break;
             case Commands::SET_LIMIT_PER_SEC_TO_WRITE:
-                if( !Serialization::unpack( listSetWriteLimit, data, length - 1 ) ) {
+                if( !Serialization::unpack( listSetWriteLimit, &data[1], length - 1 ) ) {
                     return false;
                 }
 
@@ -212,6 +227,7 @@ namespace memsess::core {
         unsigned char cmd = data[0];
 
         char uuid[UUID::LENGTH+1] = {};
+        char uuidRaw[UUID::LENGTH_RAW] = {};
         std::string value;
         unsigned int counterKeys;
         unsigned int counterRecord;
@@ -257,19 +273,20 @@ namespace memsess::core {
         switch( cmd ) {
             case Commands::GENERATE:
                 res = _store->generate( params.lifetime, uuid );
+                UUID::toBin( uuid, uuidRaw );
                 break;
             case Commands::INIT:
                 res = _store->exist( uuid );
                 break;
             case Commands::REMOVE:
-                _store->remove( params.uuidRaw );
+                _store->remove( uuid );
                 break;
             case Commands::PROLONG:
-                res = _store->prolong( params.uuidRaw, params.lifetime );
+                res = _store->prolong( uuid, params.lifetime );
                 break;
             case Commands::ADD_KEY:
                 res = _store->addKey(
-                    params.uuidRaw,
+                    uuid,
                     params.key,
                     params.data,
                     counterKeys,
@@ -280,17 +297,17 @@ namespace memsess::core {
                 );
                 break;
             case Commands::GET_KEY:
-                res = _store->getKey( params.uuidRaw, params.key, value, params.counterKeys, params.counterRecord );
+                res = _store->getKey( uuid, params.key, value, counterKeys, counterRecord );
                 break;
             case Commands::REMOVE_KEY:
-                res = _store->removeKey( params.uuidRaw, params.key );
+                res = _store->removeKey( uuid, params.key );
                 break;
             case Commands::EXIST_KEY:
-                res = _store->existKey( params.uuidRaw, params.key );
+                res = _store->existKey( uuid, params.key );
                 break;
             case Commands::SET_KEY:
                 res = _store->setKey(
-                    params.uuidRaw,
+                    uuid,
                     params.key,
                     params.data,
                     params.dataLength,
@@ -299,16 +316,16 @@ namespace memsess::core {
                 );
                 break;
             case Commands::SET_FORCE_KEY:
-                res = _store->setForceKey( params.uuidRaw, params.key, params.data, params.dataLength );
+                res = _store->setForceKey( uuid, params.key, params.data, params.dataLength );
                 break;
             case Commands::PROLONG_KEY:
-                res = _store->prolongKey( params.uuidRaw, params.key, params.lifetime );
+                res = _store->prolongKey( uuid, params.key, params.lifetime );
                 break;
             case Commands::SET_LIMIT_PER_SEC_TO_READ:
-                res = _store->setLimitToReadPerSec( params.uuidRaw, params.key, params.limitWrite );
+                res = _store->setLimitToReadPerSec( uuid, params.key, params.limitWrite );
                 break;
             case Commands::SET_LIMIT_PER_SEC_TO_WRITE:
-                res = _store->setLimitToWritePerSec( params.uuidRaw, params.key, params.limitRead );
+                res = _store->setLimitToWritePerSec( uuid, params.key, params.limitRead );
                 break;
         }
 
@@ -320,7 +337,7 @@ namespace memsess::core {
         if( res != StoreInterface::OK ) {
             localData = Serialization::pack( ( const Serialization::Item **)listNone, localDataLength );
         } else if( cmd == Commands::GENERATE ) {
-            itemUUID.value_string = params.uuidRaw;
+            itemUUID.value_string = uuidRaw;
             localData = Serialization::pack( ( const Serialization::Item **)listGenerate, localDataLength );
         } else if( cmd == Commands::ADD_KEY ) {
             itemCounterKeys.value_int = counterKeys;
