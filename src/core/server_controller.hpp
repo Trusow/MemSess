@@ -33,9 +33,16 @@ namespace memsess::core {
                 SET_LIMIT_PER_SEC_TO_WRITE = 13,
             };
             enum ResultCode {
-                OK,
-                WRONG_COMMAND,
-                WRONG_PARAMS,
+                OK = 1,
+                WRONG_COMMAND = 2,
+                WRONG_PARAMS = 3,
+                SESSION_NONE = 4,
+                KEY_NONE = 5,
+                LIMIT = 6,
+                LIFETIME = 7,
+                DUPLICATE_KEY = 8,
+                RECORD_BEEN_CHANGED = 9,
+                LIMIT_PER_SEC = 10,
             };
             struct Params {
                 const char *uuidRaw;
@@ -50,6 +57,8 @@ namespace memsess::core {
             };
 
             bool initParams( const char *data, unsigned int length, Params &params );
+            bool initCmd( char cmd );
+            ResultCode convertStoreError( StoreInterface::Result error );
         public:
             ServerController( i::StoreInterface *store );
             std::unique_ptr<char[]> parse(
@@ -64,6 +73,47 @@ namespace memsess::core {
         _store = store;
     }
 
+    bool ServerController::initCmd( char cmd ) {
+        switch( cmd ) {
+            case GENERATE:
+            case INIT:
+            case REMOVE:
+            case PROLONG:
+            case ADD_KEY:
+            case GET_KEY:
+            case SET_KEY:
+            case SET_FORCE_KEY:
+            case REMOVE_KEY:
+            case EXIST_KEY:
+            case PROLONG_KEY:
+            case SET_LIMIT_PER_SEC_TO_READ:
+            case SET_LIMIT_PER_SEC_TO_WRITE:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    ServerController::ResultCode ServerController::convertStoreError( StoreInterface::Result error ) {
+        switch( error ) {
+            case StoreInterface::E_SESSION_NONE:
+                return SESSION_NONE;
+            case StoreInterface::E_KEY_NONE:
+                return KEY_NONE;
+            case StoreInterface::E_LIMIT:
+                return LIMIT;
+            case StoreInterface::E_LIFETIME:
+                return LIFETIME;
+            case StoreInterface::E_DUPLICATE_KEY:
+                return DUPLICATE_KEY;
+            case StoreInterface::E_RECORD_BEEN_CHANGED:
+                return RECORD_BEEN_CHANGED;
+            case StoreInterface::E_LIMIT_PER_SEC:
+                return LIMIT_PER_SEC;
+            default:
+                return OK;
+        }
+    }
 
     bool ServerController::initParams( const char *data, unsigned int length, Params &params ) {
 
@@ -262,8 +312,25 @@ namespace memsess::core {
         Serialization::Item *listGetKey[] = { &itemResult, &itemValue, &itemCounterKeys, &itemCounterRecord, &itemEnd };
         Serialization::Item *listFinal[] = { &itemValueFinal, &itemEnd };
 
+        unsigned int localDataLength = 0;
+        std::unique_ptr<char[]> localData;
+
+        if( !initCmd( cmd ) ) {
+            itemResult.value_char = WRONG_COMMAND;
+            localData = Serialization::pack( ( const Serialization::Item **)listNone, localDataLength );
+
+            itemValueFinal.length = localDataLength;
+            itemValueFinal.value_string = localData.get();
+            return Serialization::pack( ( const Serialization::Item **)listFinal, resultLength );
+        }
+
         if( !initParams( data, length, params ) ) {
-            return std::make_unique<char[]>(0);
+            itemResult.value_char = WRONG_PARAMS;
+            localData = Serialization::pack( ( const Serialization::Item **)listNone, localDataLength );
+
+            itemValueFinal.length = localDataLength;
+            itemValueFinal.value_string = localData.get();
+            return Serialization::pack( ( const Serialization::Item **)listFinal, resultLength );
         }
 
         if( cmd != Commands::GENERATE ) {
@@ -331,10 +398,9 @@ namespace memsess::core {
 
         itemResult.value_char = res;
 
-        unsigned int localDataLength = 0;
-        std::unique_ptr<char[]> localData;
 
         if( res != StoreInterface::OK ) {
+            itemResult.value_char = convertStoreError( res );
             localData = Serialization::pack( ( const Serialization::Item **)listNone, localDataLength );
         } else if( cmd == Commands::GENERATE ) {
             itemUUID.value_string = uuidRaw;
