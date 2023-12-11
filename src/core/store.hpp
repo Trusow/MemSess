@@ -109,6 +109,15 @@ namespace memsess::core {
             void clearInactive();
             Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned short int limit );
             Result setLimitToWritePerSec( const char *sessionId, const char *key, unsigned short int limit );
+            void addAllKey(
+                const char *key,
+                std::string &value,
+                unsigned short int limitWrite = 0,
+                unsigned short int limitRead = 0
+            );
+            void removeAllKey( const char *key );
+            void setLimitToReadPerSecAllKey( const char *key, unsigned short int limit );
+            void setLimitToWritePerSecAllKey( const char *key, unsigned short int limit );
     };
 
     unsigned long int Store::getTime() {
@@ -643,6 +652,118 @@ namespace memsess::core {
         }
 
         return Result::OK;
+    }
+
+    void Store::addAllKey(
+        const char *key,
+        std::string &value,
+        unsigned short int limitWrite,
+        unsigned short int limitRead
+    ) {
+#if MEMSESS_MULTI
+        util::LockAtomic lock( _writers );
+        std::lock_guard<std::shared_timed_mutex> lockList( _m );
+#endif
+        auto tsCur = getTime();
+
+        for( auto it = _list.begin(); it != _list.end(); ++it ) {
+            auto sess = _list[it->first].get();
+
+            if( sess->tsEnd < tsCur || sess->values.find( key ) != sess->values.end() ) {
+                continue;
+            }
+
+            auto val = std::make_unique<Value>();
+            val->value = value;
+
+            if( limitWrite != 0 ) {
+                val->limiterWrite = std::make_unique<Limiter>();
+                val->limiterWrite->limit = limitWrite;
+            }
+
+            if( limitRead != 0 ) {
+                val->limiterRead = std::make_unique<Limiter>();
+                val->limiterRead->limit = limitRead;
+            }
+
+            sess->values[key] = std::move( val );
+        }
+    }
+
+    void Store::removeAllKey( const char *key ) {
+#if MEMSESS_MULTI
+        util::LockAtomic lock( _writers );
+        std::lock_guard<std::shared_timed_mutex> lockList( _m );
+#endif
+        auto tsCur = getTime();
+
+        for( auto it = _list.begin(); it != _list.end(); ++it ) {
+            auto sess = _list[it->first].get();
+
+            if( sess->tsEnd < tsCur ) {
+                continue;
+            }
+
+            sess->values.erase( key );
+        }
+    }
+
+    void Store::setLimitToReadPerSecAllKey( const char *key, unsigned short int limit ) {
+#if MEMSESS_MULTI
+        util::LockAtomic lock( _writers );
+        std::lock_guard<std::shared_timed_mutex> lockList( _m );
+#endif
+        auto tsCur = getTime();
+
+        for( auto it = _list.begin(); it != _list.end(); ++it ) {
+            auto sess = _list[it->first].get();
+
+            if( sess->tsEnd < tsCur || sess->values.find( key ) == sess->values.end() ) {
+                continue;
+            }
+
+            auto val = sess->values[key].get();
+
+            if( val->tsEnd != 0 && val->tsEnd < tsCur ) {
+                continue;
+            }
+
+            if( limit == 0 ) {
+                val->limiterRead.reset();
+            } else {
+                val->limiterRead = std::make_unique<Limiter>();
+                val->limiterRead->limit = limit;
+            }
+        }
+    }
+
+    void Store::setLimitToWritePerSecAllKey( const char *key, unsigned short int limit ) {
+#if MEMSESS_MULTI
+        util::LockAtomic lock( _writers );
+        std::lock_guard<std::shared_timed_mutex> lockList( _m );
+#endif
+        auto tsCur = getTime();
+
+        for( auto it = _list.begin(); it != _list.end(); ++it ) {
+            auto sess = _list[it->first].get();
+
+            if( sess->tsEnd < tsCur || sess->values.find( key ) == sess->values.end() ) {
+                continue;
+            }
+
+            auto val = sess->values[key].get();
+
+            if( val->tsEnd != 0 && val->tsEnd < tsCur ) {
+                continue;
+            }
+
+            if( limit == 0 ) {
+                val->limiterWrite.reset();
+            } else {
+                val->limiterWrite = std::make_unique<Limiter>();
+                val->limiterWrite->limit = limit;
+            }
+        }
     }
 }
 
