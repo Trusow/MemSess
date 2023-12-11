@@ -107,8 +107,8 @@ namespace memsess::core {
             Result removeKey( const char *sessionId, const char *key );
          
             void clearInactive();
-            Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit );
-            Result setLimitToWritePerSec( const char *sessionId, const char *key, unsigned int limit );
+            Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned short int limit );
+            Result setLimitToWritePerSec( const char *sessionId, const char *key, unsigned short int limit );
     };
 
     unsigned long int Store::getTime() {
@@ -561,7 +561,7 @@ namespace memsess::core {
         return true;
     }
 
-    Store::Result Store::setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit ) {
+    Store::Result Store::setLimitToReadPerSec( const char *sessionId, const char *key, unsigned short int limit ) {
 #if MEMSESS_MULTI
         _wait( _writers );
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
@@ -599,7 +599,7 @@ namespace memsess::core {
         return Result::OK;
     }
 
-    Store::Result Store::setLimitToWritePerSec( const char *sessionId, const char *key, unsigned int limit ) {
+    Store::Result Store::setLimitToWritePerSec( const char *sessionId, const char *key, unsigned short int limit ) {
 #if MEMSESS_MULTI
         _wait( _writers );
         std::shared_lock<std::shared_timed_mutex> lockList( _m );

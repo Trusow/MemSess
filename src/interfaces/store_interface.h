@@ -61,8 +61,16 @@ namespace memsess::i {
                 unsigned int &counterRecord
             ) = 0;
             virtual Result removeKey( const char *sessionId, const char *key ) = 0;
-            virtual Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned int limit ) = 0;
-            virtual Result setLimitToWritePerSec( const char *sessionId, const char *key, unsigned int limit ) = 0;
+            virtual Result setLimitToReadPerSec(
+                const char *sessionId,
+                const char *key,
+                unsigned short int limit
+            ) = 0;
+            virtual Result setLimitToWritePerSec(
+                const char *sessionId,
+                const char *key,
+                unsigned short int limit
+            ) = 0;
          
             virtual void clearInactive() = 0;
     };
