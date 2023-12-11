@@ -593,8 +593,12 @@ namespace memsess::core {
         std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
 #endif
 
-        val->limiterRead = std::make_unique<Limiter>();
-        val->limiterRead->limit = limit;
+        if( limit != 0 ) {
+            val->limiterRead = std::make_unique<Limiter>();
+            val->limiterRead->limit = limit;
+        } else {
+            val->limiterRead.reset();
+        }
 
         return Result::OK;
     }
@@ -631,8 +635,12 @@ namespace memsess::core {
         std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
 #endif
 
-        val->limiterWrite = std::make_unique<Limiter>();
-        val->limiterWrite->limit = limit;
+        if( limit != 0 ) {
+            val->limiterWrite = std::make_unique<Limiter>();
+            val->limiterWrite->limit = limit;
+        } else {
+            val->limiterWrite.reset();
+        }
 
         return Result::OK;
     }
