@@ -63,6 +63,7 @@ namespace memsess::core {
             bool initParams( const char *data, unsigned int length, Params &params );
             bool initCmd( char cmd );
             ResultCode convertStoreError( StoreInterface::Result error );
+            bool isNoUUIDCmd( char cmd );
         public:
             ServerController( i::StoreInterface *store );
             std::unique_ptr<char[]> parse(
@@ -99,6 +100,20 @@ namespace memsess::core {
                 return true;
             default:
                 return false;
+        }
+    }
+
+    bool ServerController::isNoUUIDCmd( char cmd ) {
+        switch( cmd ) {
+            case Commands::GENERATE:
+            case Commands::ALL_ADD_KEY:
+            case Commands::ALL_REMOVE_KEY:
+            case Commands::ALL_SET_LIMIT_PER_SEC_TO_READ:
+            case Commands::ALL_SET_LIMIT_PER_SEC_TO_WRITE:
+                return true;
+            default:
+                return false;
+                break;
         }
     }
 
@@ -380,16 +395,8 @@ namespace memsess::core {
             return Serialization::pack( ( const Serialization::Item **)listFinal, resultLength );
         }
 
-        switch( cmd ) {
-            case Commands::GENERATE:
-            case Commands::ALL_ADD_KEY:
-            case Commands::ALL_REMOVE_KEY:
-            case Commands::ALL_SET_LIMIT_PER_SEC_TO_READ:
-            case Commands::ALL_SET_LIMIT_PER_SEC_TO_WRITE:
-                break;
-            default:
-                UUID::toNormal( params.uuidRaw, uuid );
-                break;
+        if( !isNoUUIDCmd( cmd ) ) {
+            UUID::toNormal( params.uuidRaw, uuid );
         }
 
         switch( cmd ) {
