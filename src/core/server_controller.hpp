@@ -92,6 +92,10 @@ namespace memsess::core {
             case PROLONG_KEY:
             case SET_LIMIT_PER_SEC_TO_READ:
             case SET_LIMIT_PER_SEC_TO_WRITE:
+            case ALL_ADD_KEY:
+            case ALL_REMOVE_KEY:
+            case ALL_SET_LIMIT_PER_SEC_TO_READ:
+            case ALL_SET_LIMIT_PER_SEC_TO_WRITE:
                 return true;
             default:
                 return false;
