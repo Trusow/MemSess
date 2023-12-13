@@ -474,22 +474,26 @@ namespace memsess::core {
         if( res != StoreInterface::OK ) {
             itemResult.value_char = convertStoreError( res );
             localData = Serialization::pack( ( const Serialization::Item **)listNone, localDataLength );
-        } else if( cmd == Commands::GENERATE ) {
-            itemUUID.value_string = uuidRaw;
-            localData = Serialization::pack( ( const Serialization::Item **)listGenerate, localDataLength );
-        } else if( cmd == Commands::ADD_KEY ) {
-            itemCounterKeys.value_int = counterKeys;
-            itemCounterRecord.value_int = counterRecord;
-            localData = Serialization::pack( ( const Serialization::Item **)listAddKey, localDataLength );
-        } else if( cmd == Commands::GET_KEY ) {
-            itemCounterKeys.value_int = counterKeys;
-            itemCounterRecord.value_int = counterRecord;
-            itemValue.value_string = value.c_str();
-            itemValue.length = value.length();
-
-            localData = Serialization::pack( ( const Serialization::Item **)listGetKey, localDataLength );
         } else {
-            localData = Serialization::pack( ( const Serialization::Item **)listNone, localDataLength );
+            itemResult.value_char = OK;
+
+            if( cmd == Commands::GENERATE ) {
+                itemUUID.value_string = uuidRaw;
+                localData = Serialization::pack( ( const Serialization::Item **)listGenerate, localDataLength );
+            } else if( cmd == Commands::ADD_KEY ) {
+                itemCounterKeys.value_int = counterKeys;
+                itemCounterRecord.value_int = counterRecord;
+                localData = Serialization::pack( ( const Serialization::Item **)listAddKey, localDataLength );
+            } else if( cmd == Commands::GET_KEY ) {
+                itemCounterKeys.value_int = counterKeys;
+                itemCounterRecord.value_int = counterRecord;
+                itemValue.value_string = value.c_str();
+                itemValue.length = value.length();
+
+                localData = Serialization::pack( ( const Serialization::Item **)listGetKey, localDataLength );
+            } else {
+                localData = Serialization::pack( ( const Serialization::Item **)listNone, localDataLength );
+            }
         }
 
         itemValueFinal.length = localDataLength;
