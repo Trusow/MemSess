@@ -305,7 +305,13 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
 #endif
 
-        if( sess->values.find( key ) != sess->values.end() ) {
+        if( sess->values.find( key ) == sess->values.end() ) {
+            return Result::E_KEY_NONE;
+        }
+
+        auto val = sess->values[key].get();
+        
+        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
             return Result::E_KEY_NONE;
         }
 
@@ -340,6 +346,10 @@ namespace memsess::core {
         }
 
         auto val = sess->values[key].get();
+
+        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
+            return Result::E_KEY_NONE;
+        }
 
 #if MEMSESS_MULTI
         util::LockAtomic writersValue( val->writers );
