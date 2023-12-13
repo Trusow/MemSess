@@ -169,7 +169,7 @@ namespace memsess::core {
         Serialization::Item *listAllAddKey[] = { &key, &value, &limitRead, &limitWrite, &end };
         Serialization::Item *listAllRemoveKey[] = { &key, &end };
         Serialization::Item *listAllSetWriteLimit[] = { &key, &limitWrite, &end };
-        Serialization::Item *listAllSetReadLimit[] = { &uuid, &key, &limitRead, &end };
+        Serialization::Item *listAllSetReadLimit[] = { &key, &limitRead, &end };
 
         switch( data[0] ) {
             case Commands::GENERATE:
