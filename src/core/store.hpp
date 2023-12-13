@@ -109,15 +109,15 @@ namespace memsess::core {
             void clearInactive();
             Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned short int limit );
             Result setLimitToWritePerSec( const char *sessionId, const char *key, unsigned short int limit );
-            void addAllKey(
+            Result addAllKey(
                 const char *key,
-                std::string &value,
+                const char *value,
                 unsigned short int limitWrite = 0,
                 unsigned short int limitRead = 0
             );
-            void removeAllKey( const char *key );
-            void setLimitToReadPerSecAllKey( const char *key, unsigned short int limit );
-            void setLimitToWritePerSecAllKey( const char *key, unsigned short int limit );
+            Result removeAllKey( const char *key );
+            Result setLimitToReadPerSecAllKey( const char *key, unsigned short int limit );
+            Result setLimitToWritePerSecAllKey( const char *key, unsigned short int limit );
     };
 
     unsigned long int Store::getTime() {
@@ -654,9 +654,9 @@ namespace memsess::core {
         return Result::OK;
     }
 
-    void Store::addAllKey(
+    Store::Result Store::addAllKey(
         const char *key,
-        std::string &value,
+        const char *value,
         unsigned short int limitWrite,
         unsigned short int limitRead
     ) {
@@ -688,9 +688,11 @@ namespace memsess::core {
 
             sess->values[key] = std::move( val );
         }
+
+        return Result::OK;
     }
 
-    void Store::removeAllKey( const char *key ) {
+    Store::Result Store::removeAllKey( const char *key ) {
 #if MEMSESS_MULTI
         util::LockAtomic lock( _writers );
         std::lock_guard<std::shared_timed_mutex> lockList( _m );
@@ -706,9 +708,11 @@ namespace memsess::core {
 
             sess->values.erase( key );
         }
+
+        return Result::OK;
     }
 
-    void Store::setLimitToReadPerSecAllKey( const char *key, unsigned short int limit ) {
+    Store::Result Store::setLimitToReadPerSecAllKey( const char *key, unsigned short int limit ) {
 #if MEMSESS_MULTI
         util::LockAtomic lock( _writers );
         std::lock_guard<std::shared_timed_mutex> lockList( _m );
@@ -735,9 +739,11 @@ namespace memsess::core {
                 val->limiterRead->limit = limit;
             }
         }
+
+        return Result::OK;
     }
 
-    void Store::setLimitToWritePerSecAllKey( const char *key, unsigned short int limit ) {
+    Store::Result Store::setLimitToWritePerSecAllKey( const char *key, unsigned short int limit ) {
 #if MEMSESS_MULTI
         util::LockAtomic lock( _writers );
         std::lock_guard<std::shared_timed_mutex> lockList( _m );
@@ -764,6 +770,8 @@ namespace memsess::core {
                 val->limiterWrite->limit = limit;
             }
         }
+
+        return Result::OK;
     }
 }
 

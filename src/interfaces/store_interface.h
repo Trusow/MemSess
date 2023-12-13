@@ -73,15 +73,15 @@ namespace memsess::i {
             ) = 0;
          
             virtual void clearInactive() = 0;
-            virtual void addAllKey(
+            virtual Result addAllKey(
                 const char *key,
-                std::string &value,
+                const char *value,
                 unsigned short int limitWrite = 0,
                 unsigned short int limitRead = 0
             ) = 0;
-            virtual void removeAllKey( const char *key ) = 0;
-            virtual void setLimitToReadPerSecAllKey( const char *key, unsigned short int limit ) = 0;
-            virtual void setLimitToWritePerSecAllKey( const char *key, unsigned short int limit ) = 0;
+            virtual Result removeAllKey( const char *key ) = 0;
+            virtual Result setLimitToReadPerSecAllKey( const char *key, unsigned short int limit ) = 0;
+            virtual Result setLimitToWritePerSecAllKey( const char *key, unsigned short int limit ) = 0;
     };
 }
 
