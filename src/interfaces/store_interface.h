@@ -9,6 +9,7 @@ namespace memsess::i {
             enum Result {
                 OK,
                 E_SESSION_NONE,
+                E_DUPLICATE_SESSION,
                 E_KEY_NONE,
                 E_LIMIT,
                 E_LIFETIME,
@@ -18,6 +19,7 @@ namespace memsess::i {
             };
             virtual void setLimit( unsigned int limit ) = 0;
 
+            virtual Result add( const char *sessionId ) = 0;
             virtual Result generate( unsigned int lifetime, char *sessionId ) = 0;
             virtual Result exist( const char *sessionId ) = 0;
             virtual void remove( const char *sessionId ) = 0;

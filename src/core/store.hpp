@@ -71,6 +71,7 @@ namespace memsess::core {
             bool incLimiter( Limiter *limiter );
  
         public:
+            Result add( const char *sessionId );
             Result generate( unsigned int lifetime, char *sessionId );
             Result exist( const char *sessionId );
             void setLimit( unsigned int limit );
@@ -129,6 +130,29 @@ namespace memsess::core {
         while( atom );
     }
 #endif
+
+    Store::Result Store::add( const char *sessionId ) {
+#if MEMSESS_MULTI
+        util::LockAtomic lock( _writers );
+        std::lock_guard<std::shared_timed_mutex> lockList( _m );
+#endif
+        if( ( _count == _limit && _limit != 0 ) || _count == 0xFF'FF'FF'FF ) {
+            return Result::E_LIMIT;
+        }
+
+        if( _list.find( sessionId ) != _list.end() ) {
+            return Result::E_DUPLICATE_SESSION;
+        }
+
+        auto item = std::make_unique<Item>();
+
+        item->tsEnd = 0xFFFFFFFF;
+
+        _list[sessionId] = std::move( item );
+        _count++;
+
+        return Result::OK;
+    }
 
     Store::Result Store::generate( unsigned int lifetime, char *sessionId ) {
 #if MEMSESS_MULTI
