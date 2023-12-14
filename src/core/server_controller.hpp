@@ -35,6 +35,7 @@ namespace memsess::core {
                 ALL_REMOVE_KEY = 15,
                 ALL_SET_LIMIT_PER_SEC_TO_READ = 16,
                 ALL_SET_LIMIT_PER_SEC_TO_WRITE = 17,
+                ADD_SESSION = 18,
             };
             enum ResultCode {
                 OK = 1,
@@ -47,6 +48,7 @@ namespace memsess::core {
                 DUPLICATE_KEY = 8,
                 RECORD_BEEN_CHANGED = 9,
                 LIMIT_PER_SEC = 10,
+                DUPLICATE_SESSION = 11,
             };
             struct Params {
                 const char *uuidRaw;
@@ -97,6 +99,7 @@ namespace memsess::core {
             case ALL_REMOVE_KEY:
             case ALL_SET_LIMIT_PER_SEC_TO_READ:
             case ALL_SET_LIMIT_PER_SEC_TO_WRITE:
+            case ADD_SESSION:
                 return true;
             default:
                 return false;
@@ -133,6 +136,8 @@ namespace memsess::core {
                 return RECORD_BEEN_CHANGED;
             case StoreInterface::E_LIMIT_PER_SEC:
                 return LIMIT_PER_SEC;
+            case StoreInterface::E_DUPLICATE_SESSION:
+                return DUPLICATE_SESSION;
             default:
                 return OK;
         }
@@ -185,6 +190,7 @@ namespace memsess::core {
         Serialization::Item *listAllRemoveKey[] = { &key, &end };
         Serialization::Item *listAllSetWriteLimit[] = { &key, &limitWrite, &end };
         Serialization::Item *listAllSetReadLimit[] = { &key, &limitRead, &end };
+        Serialization::Item *listAddSession[] = { &uuid, &end };
 
         switch( data[0] ) {
             case Commands::GENERATE:
@@ -320,6 +326,13 @@ namespace memsess::core {
 
                 params.key = key.value_string;
                 params.limitWrite = ( unsigned short int )limitWrite.value_short_int;
+                break;
+            case Commands::ADD_SESSION:
+                if( !Serialization::unpack( listAddSession, &data[1], length - 1 ) ) {
+                    return false;
+                }
+
+                params.uuidRaw = uuid.value_string;
                 break;
             default:
                 return false;
@@ -472,6 +485,9 @@ namespace memsess::core {
                 break;
             case Commands::ALL_SET_LIMIT_PER_SEC_TO_WRITE:
                 res = _store->setLimitToWritePerSecAllKey( uuid, params.limitWrite );
+                break;
+            case Commands::ADD_SESSION:
+                res = _store->add( uuid );
                 break;
         }
 
