@@ -17,6 +17,10 @@
 namespace memsess::core {
 
     class Server {
+        public:
+            enum Err {
+                E_SERVER_ERROR,
+            };
         private:
             struct Buffer {
                 unsigned int length;
@@ -55,7 +59,7 @@ namespace memsess::core {
         auto sock = socket( AF_INET, SOCK_STREAM, 0 );
 
         if( sock == -1 ) {
-            throw -1;
+            throw E_SERVER_ERROR;
         }
 
         auto optval = 1;
@@ -64,7 +68,7 @@ namespace memsess::core {
 
         auto res = fcntl( sock, F_SETFL, O_NONBLOCK );
         if( res == -1 ) {
-            throw -1;
+            throw E_SERVER_ERROR;
         }
 
         return sock;
@@ -77,7 +81,7 @@ namespace memsess::core {
         addr.sin_addr.s_addr = htonl( INADDR_ANY );
 
         if( bind( fd, ( struct sockaddr * )&addr, sizeof( addr ) ) == -1 ) {
-            throw -1;
+            throw E_SERVER_ERROR;
         }
     }
 
@@ -220,12 +224,12 @@ namespace memsess::core {
 
     void Server::run() {
         if( listen( _sfd, COUNT_LISTEN ) == -1 ) {
-            throw -1;
+            throw E_SERVER_ERROR;
         }
 
         auto base = event_base_new();
         if( !base ) {
-            throw -1;
+            throw E_SERVER_ERROR;
         }
 
         evutil_make_socket_nonblocking( _sfd );
