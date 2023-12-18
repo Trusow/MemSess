@@ -81,6 +81,7 @@ namespace memsess::core {
                 const char *sessionId,
                 const char *key,
                 const char *value,
+                unsigned int length,
                 unsigned int &counterKeys,
                 unsigned int &counterRecord,
                 unsigned int lifetime = 0
@@ -116,7 +117,8 @@ namespace memsess::core {
             void clearInactive();
             Result addAllKey(
                 const char *key,
-                const char *value
+                const char *value,
+                unsigned int length
             );
             Result removeAllKey( const char *key );
     };
@@ -254,6 +256,7 @@ namespace memsess::core {
         const char *sessionId,
         const char *key,
         const char *value,
+        unsigned int length,
         unsigned int &counterKeys,
         unsigned int &counterRecord,
         unsigned int lifetime
@@ -287,7 +290,7 @@ namespace memsess::core {
         sess->counterKeys++;
 
         auto val = std::make_unique<Value>();
-        val->value = value;
+        val->value = std::string( value, length );
 
         if( lifetime != 0 ) {
             val->tsEnd = tsEndKey;
@@ -606,7 +609,8 @@ namespace memsess::core {
 
     Store::Result Store::addAllKey(
         const char *key,
-        const char *value
+        const char *value,
+        unsigned int length
     ) {
 #if MEMSESS_MULTI
         util::LockAtomic lock( _writers );
@@ -622,7 +626,7 @@ namespace memsess::core {
             }
 
             auto val = std::make_unique<Value>();
-            val->value = value;
+            val->value = std::string( value, length );
 
             val->limiterWrite = std::make_unique<Limiter>();
             val->limiterRead = std::make_unique<Limiter>();

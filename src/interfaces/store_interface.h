@@ -29,6 +29,7 @@ namespace memsess::i {
                 const char *sessionId,
                 const char *key,
                 const char *value,
+                unsigned int length,
                 unsigned int &counterKeys,
                 unsigned int &counterRecord,
                 unsigned int lifetime = 0
