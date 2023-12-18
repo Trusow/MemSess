@@ -210,6 +210,7 @@ namespace memsess::core {
 
                 params.key = key.value_string;
                 params.data = value.value_string;
+                params.dataLength = value.length;
                 params.uuidRaw = uuid.value_string;
                 params.lifetime = ( unsigned int )prolong.value_int;
                 break;
@@ -221,6 +222,7 @@ namespace memsess::core {
 
                 params.key = key.value_string;
                 params.data = value.value_string;
+                params.dataLength = value.length;
                 break;
             case Commands::ALL_REMOVE_KEY:
                 if( !Serialization::unpack( listAllRemoveKey, &data[1], length - 1 ) ) {
@@ -391,6 +393,7 @@ namespace memsess::core {
                     uuid,
                     params.key,
                     params.data,
+                    params.dataLength,
                     counterKeys,
                     counterRecord,
                     params.lifetime
@@ -399,7 +402,8 @@ namespace memsess::core {
             case Commands::ALL_ADD_KEY:
                 res = _store->addAllKey(
                     params.key,
-                    params.data
+                    params.data,
+                    params.dataLength
                 );
                 break;
             case Commands::GET_KEY:
