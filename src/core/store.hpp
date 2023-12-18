@@ -27,7 +27,6 @@ namespace memsess::core {
         public:
             struct Limiter {
                 unsigned long int ts; 
-                unsigned int limit;
                 unsigned int count;
 #if MEMSESS_MULTI
                 std::mutex m;
@@ -68,7 +67,7 @@ namespace memsess::core {
             void _wait( std::atomic_uint &atom );
 #endif
             unsigned long int getTime();
-            bool incLimiter( Limiter *limiter );
+            bool incLimiter( Limiter *limiter, unsigned short int limit );
  
         public:
             Result add( const char *sessionId );
@@ -84,9 +83,7 @@ namespace memsess::core {
                 const char *value,
                 unsigned int &counterKeys,
                 unsigned int &counterRecord,
-                unsigned int lifetime = 0,
-                unsigned short int limitWrite = 0,
-                unsigned short int limitRead = 0
+                unsigned int lifetime = 0
             );
             Result existKey( const char *sessionId, const char *key );
             Result prolongKey( const char *sessionId, const char *key, unsigned int lifetime );
@@ -96,29 +93,32 @@ namespace memsess::core {
                 const char *value,
                 unsigned int length,
                 unsigned int counterKeys,
-                unsigned int counterRecord
+                unsigned int counterRecord,
+                unsigned short int limit = 0
             );
             Result setForceKey(
                 const char *sessionId,
                 const char *key,
                 const char *value,
-                unsigned int length
+                unsigned int length,
+                unsigned short int limit = 0
             );
-            Result getKey( const char *sessionId, const char *key, std::string &value, unsigned int &counterKeys, unsigned int &counterRecord );
+            Result getKey(
+                const char *sessionId,
+                const char *key,
+                std::string &value,
+                unsigned int &counterKeys,
+                unsigned int &counterRecord,
+                unsigned short int limit = 0
+            );
             Result removeKey( const char *sessionId, const char *key );
          
             void clearInactive();
-            Result setLimitToReadPerSec( const char *sessionId, const char *key, unsigned short int limit );
-            Result setLimitToWritePerSec( const char *sessionId, const char *key, unsigned short int limit );
             Result addAllKey(
                 const char *key,
-                const char *value,
-                unsigned short int limitWrite = 0,
-                unsigned short int limitRead = 0
+                const char *value
             );
             Result removeAllKey( const char *key );
-            Result setLimitToReadPerSecAllKey( const char *key, unsigned short int limit );
-            Result setLimitToWritePerSecAllKey( const char *key, unsigned short int limit );
     };
 
     unsigned long int Store::getTime() {
@@ -256,9 +256,7 @@ namespace memsess::core {
         const char *value,
         unsigned int &counterKeys,
         unsigned int &counterRecord,
-        unsigned int lifetime,
-        unsigned short int limitWrite,
-        unsigned short int limitRead
+        unsigned int lifetime
     ) {
         auto tsEndKey = getTime() + lifetime;
 
@@ -295,15 +293,8 @@ namespace memsess::core {
             val->tsEnd = tsEndKey;
         }
 
-        if( limitWrite != 0 ) {
-            val->limiterWrite = std::make_unique<Limiter>();
-            val->limiterWrite->limit = limitWrite;
-        }
-
-        if( limitRead != 0 ) {
-            val->limiterRead = std::make_unique<Limiter>();
-            val->limiterRead->limit = limitRead;
-        }
+        val->limiterWrite = std::make_unique<Limiter>();
+        val->limiterRead = std::make_unique<Limiter>();
 
         counterKeys = sess->counterKeys;
         counterRecord = 0;
@@ -396,7 +387,8 @@ namespace memsess::core {
         const char *value,
         unsigned int length,
         unsigned int counterKeys,
-        unsigned int counterRecord
+        unsigned int counterRecord,
+        unsigned short int limit
     ) {
 #if MEMSESS_MULTI
         _wait( _writers );
@@ -433,7 +425,7 @@ namespace memsess::core {
             return Result::E_RECORD_BEEN_CHANGED;
         }
 
-        if( !incLimiter( val->limiterWrite.get() ) ) {
+        if( !incLimiter( val->limiterWrite.get(), limit ) ) {
             return Result::E_LIMIT_PER_SEC;
         }
 
@@ -447,7 +439,8 @@ namespace memsess::core {
         const char *sessionId,
         const char *key,
         const char *value,
-        unsigned int length
+        unsigned int length,
+        unsigned short int limit
     ) {
 #if MEMSESS_MULTI
         _wait( _writers );
@@ -480,7 +473,7 @@ namespace memsess::core {
         std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
 #endif
 
-        if( !incLimiter( val->limiterWrite.get() ) ) {
+        if( !incLimiter( val->limiterWrite.get(), limit ) ) {
             return Result::E_LIMIT_PER_SEC;
         }
 
@@ -490,7 +483,14 @@ namespace memsess::core {
         return Result::OK;
     }
 
-    Store::Result Store::getKey( const char *sessionId, const char *key, std::string &value, unsigned int &counterKeys, unsigned int &counterRecord ) {
+    Store::Result Store::getKey(
+        const char *sessionId,
+        const char *key,
+        std::string &value,
+        unsigned int &counterKeys,
+        unsigned int &counterRecord,
+        unsigned short int limit
+    ) {
 #if MEMSESS_MULTI
         _wait( _writers );
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
@@ -522,7 +522,7 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockValue( val->m );
 #endif
 
-        if( !incLimiter( val->limiterRead.get() ) ) {
+        if( !incLimiter( val->limiterRead.get(), limit ) ) {
             return Result::E_LIMIT_PER_SEC;
         }
 
@@ -583,8 +583,8 @@ namespace memsess::core {
         }
     }
 
-    bool Store::incLimiter( Limiter *limiter ) {
-        if( limiter == nullptr ) {
+    bool Store::incLimiter( Limiter *limiter, unsigned short int limit ) {
+        if( limit == 0 ) {
             return true;
         }
 
@@ -592,7 +592,7 @@ namespace memsess::core {
         std::lock_guard<std::mutex> lock( limiter->m );
 #endif
 
-        if( limiter->limit == limiter->count && limiter->ts == getTime() ) {
+        if( limit == limiter->count && limiter->ts == getTime() ) {
             return false;
         } else if( limiter->ts != getTime() ) {
             limiter->ts = getTime();
@@ -604,95 +604,9 @@ namespace memsess::core {
         return true;
     }
 
-    Store::Result Store::setLimitToReadPerSec( const char *sessionId, const char *key, unsigned short int limit ) {
-#if MEMSESS_MULTI
-        _wait( _writers );
-        std::shared_lock<std::shared_timed_mutex> lockList( _m );
-#endif
-
-        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
-            return Result::E_SESSION_NONE;
-        }
-
-        auto sess = _list[sessionId].get();
-
-#if MEMSESS_MULTI
-        _wait( sess->writers );
-        std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
-#endif
-
-        if( sess->values.find( key ) == sess->values.end() ) {
-            return Result::E_KEY_NONE;
-        }
-
-        auto val = sess->values[key].get();
-        
-        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
-            return Result::E_KEY_NONE;
-        }
-
-#if MEMSESS_MULTI
-        util::LockAtomic writersValue( val->writers );
-        std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
-#endif
-
-        if( limit != 0 ) {
-            val->limiterRead = std::make_unique<Limiter>();
-            val->limiterRead->limit = limit;
-        } else {
-            val->limiterRead.reset();
-        }
-
-        return Result::OK;
-    }
-
-    Store::Result Store::setLimitToWritePerSec( const char *sessionId, const char *key, unsigned short int limit ) {
-#if MEMSESS_MULTI
-        _wait( _writers );
-        std::shared_lock<std::shared_timed_mutex> lockList( _m );
-#endif
-
-        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
-            return Result::E_SESSION_NONE;
-        }
-
-        auto sess = _list[sessionId].get();
-
-#if MEMSESS_MULTI
-        _wait( sess->writers );
-        std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
-#endif
-
-        if( sess->values.find( key ) == sess->values.end() ) {
-            return Result::E_KEY_NONE;
-        }
-
-        auto val = sess->values[key].get();
-        
-        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
-            return Result::E_KEY_NONE;
-        }
-
-#if MEMSESS_MULTI
-        util::LockAtomic writersValue( val->writers );
-        std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
-#endif
-
-        if( limit != 0 ) {
-            val->limiterWrite = std::make_unique<Limiter>();
-            val->limiterWrite->limit = limit;
-        } else {
-            val->limiterWrite.reset();
-        }
-
-        return Result::OK;
-    }
-
     Store::Result Store::addAllKey(
         const char *key,
-        const char *value,
-        unsigned short int limitWrite,
-        unsigned short int limitRead
+        const char *value
     ) {
 #if MEMSESS_MULTI
         util::LockAtomic lock( _writers );
@@ -710,15 +624,8 @@ namespace memsess::core {
             auto val = std::make_unique<Value>();
             val->value = value;
 
-            if( limitWrite != 0 ) {
-                val->limiterWrite = std::make_unique<Limiter>();
-                val->limiterWrite->limit = limitWrite;
-            }
-
-            if( limitRead != 0 ) {
-                val->limiterRead = std::make_unique<Limiter>();
-                val->limiterRead->limit = limitRead;
-            }
+            val->limiterWrite = std::make_unique<Limiter>();
+            val->limiterRead = std::make_unique<Limiter>();
 
             sess->values[key] = std::move( val );
         }
@@ -741,68 +648,6 @@ namespace memsess::core {
             }
 
             sess->values.erase( key );
-        }
-
-        return Result::OK;
-    }
-
-    Store::Result Store::setLimitToReadPerSecAllKey( const char *key, unsigned short int limit ) {
-#if MEMSESS_MULTI
-        util::LockAtomic lock( _writers );
-        std::lock_guard<std::shared_timed_mutex> lockList( _m );
-#endif
-        auto tsCur = getTime();
-
-        for( auto it = _list.begin(); it != _list.end(); ++it ) {
-            auto sess = _list[it->first].get();
-
-            if( sess->tsEnd < tsCur || sess->values.find( key ) == sess->values.end() ) {
-                continue;
-            }
-
-            auto val = sess->values[key].get();
-
-            if( val->tsEnd != 0 && val->tsEnd < tsCur ) {
-                continue;
-            }
-
-            if( limit == 0 ) {
-                val->limiterRead.reset();
-            } else {
-                val->limiterRead = std::make_unique<Limiter>();
-                val->limiterRead->limit = limit;
-            }
-        }
-
-        return Result::OK;
-    }
-
-    Store::Result Store::setLimitToWritePerSecAllKey( const char *key, unsigned short int limit ) {
-#if MEMSESS_MULTI
-        util::LockAtomic lock( _writers );
-        std::lock_guard<std::shared_timed_mutex> lockList( _m );
-#endif
-        auto tsCur = getTime();
-
-        for( auto it = _list.begin(); it != _list.end(); ++it ) {
-            auto sess = _list[it->first].get();
-
-            if( sess->tsEnd < tsCur || sess->values.find( key ) == sess->values.end() ) {
-                continue;
-            }
-
-            auto val = sess->values[key].get();
-
-            if( val->tsEnd != 0 && val->tsEnd < tsCur ) {
-                continue;
-            }
-
-            if( limit == 0 ) {
-                val->limiterWrite.reset();
-            } else {
-                val->limiterWrite = std::make_unique<Limiter>();
-                val->limiterWrite->limit = limit;
-            }
         }
 
         return Result::OK;

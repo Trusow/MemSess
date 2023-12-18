@@ -31,9 +31,7 @@ namespace memsess::i {
                 const char *value,
                 unsigned int &counterKeys,
                 unsigned int &counterRecord,
-                unsigned int lifetime = 0,
-                unsigned short int limitWrite = 0,
-                unsigned short int limitRead = 0
+                unsigned int lifetime = 0
             ) = 0;
             virtual Result existKey( const char *sessionId, const char *key ) = 0;
             virtual Result prolongKey(
@@ -47,43 +45,32 @@ namespace memsess::i {
                 const char *value,
                 unsigned int length,
                 unsigned int counterKeys,
-                unsigned int counterRecord
+                unsigned int counterRecord,
+                unsigned short int limit = 0
             ) = 0;
             virtual Result setForceKey(
                 const char *sessionId,
                 const char *key,
                 const char *value,
-                unsigned int length
+                unsigned int length,
+                unsigned short int limit = 0
             ) = 0;
             virtual Result getKey(
                 const char *sessionId,
                 const char *key,
                 std::string &value,
                 unsigned int &counterKeys,
-                unsigned int &counterRecord
+                unsigned int &counterRecord,
+                unsigned short int limit = 0
             ) = 0;
             virtual Result removeKey( const char *sessionId, const char *key ) = 0;
-            virtual Result setLimitToReadPerSec(
-                const char *sessionId,
-                const char *key,
-                unsigned short int limit
-            ) = 0;
-            virtual Result setLimitToWritePerSec(
-                const char *sessionId,
-                const char *key,
-                unsigned short int limit
-            ) = 0;
          
             virtual void clearInactive() = 0;
             virtual Result addAllKey(
                 const char *key,
-                const char *value,
-                unsigned short int limitWrite = 0,
-                unsigned short int limitRead = 0
+                const char *value
             ) = 0;
             virtual Result removeAllKey( const char *key ) = 0;
-            virtual Result setLimitToReadPerSecAllKey( const char *key, unsigned short int limit ) = 0;
-            virtual Result setLimitToWritePerSecAllKey( const char *key, unsigned short int limit ) = 0;
     };
 }
 
