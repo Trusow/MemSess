@@ -281,10 +281,6 @@ namespace memsess::core {
                     return false;
                 }
 
-                if( ( unsigned int )prolong.value_int == 0 ) {
-                    return false;
-                }
-
                 params.uuidRaw = uuid.value_string;
                 params.key = key.value_string;
                 params.lifetime = prolong.value_int;
