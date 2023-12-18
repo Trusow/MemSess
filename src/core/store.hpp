@@ -68,6 +68,8 @@ namespace memsess::core {
 #endif
             unsigned long int getTime();
             bool incLimiter( Limiter *limiter, unsigned short int limit );
+            bool checkActualTs( unsigned long int ts );
+            bool checkChildTs( unsigned long int parentTs, unsigned long int keyLifetime );
  
         public:
             Result add( const char *sessionId );
@@ -148,7 +150,7 @@ namespace memsess::core {
 
         auto item = std::make_unique<Item>();
 
-        item->tsEnd = 0xFFFFFFFF;
+        item->tsEnd = 0;
 
         _list[sessionId] = std::move( item );
         _count++;
@@ -177,8 +179,6 @@ namespace memsess::core {
 
         if( lifetime != 0 ) {
             item->tsEnd = getTime() + lifetime;
-        } else {
-            item->tsEnd = 0xFFFFFFFF;
         }
 
         _list[sessionId] = std::move( item );
@@ -193,7 +193,7 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 #endif
 
-        if( _list.find( sessionId ) != _list.end() ) {
+        if( _list.find( sessionId ) != _list.end() && checkActualTs( _list[sessionId]->tsEnd ) ) {
             return Result::OK;
         }
 
@@ -219,7 +219,7 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 #endif
 
-        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+        if( _list.find( sessionId ) == _list.end() || !checkActualTs( _list[sessionId]->tsEnd ) ) {
             return;
         }
 
@@ -232,7 +232,7 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 #endif
 
-        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+        if( _list.find( sessionId ) == _list.end() || !checkActualTs( _list[sessionId]->tsEnd ) ) {
             return Result::E_SESSION_NONE;
         }
 
@@ -268,13 +268,13 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 #endif
 
-        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+        if( _list.find( sessionId ) == _list.end() || !checkActualTs( _list[sessionId]->tsEnd ) ) {
             return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
 
-        if( sess->tsEnd < tsEndKey ) {
+        if( !checkChildTs( sess->tsEnd, lifetime ) ) {
             return Result::E_LIFETIME;
         }
 
@@ -312,7 +312,7 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 #endif
 
-        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+        if( _list.find( sessionId ) == _list.end() || !checkActualTs( _list[sessionId]->tsEnd ) ) {
             return Result::E_SESSION_NONE;
         }
 
@@ -344,13 +344,13 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 #endif
 
-        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+        if( _list.find( sessionId ) == _list.end() || !checkActualTs( _list[sessionId]->tsEnd ) ) {
             return Result::E_SESSION_NONE;
         }
 
         auto sess = _list[sessionId].get();
 
-        if( sess->tsEnd < tsEndKey ) {
+        if( !checkChildTs( sess->tsEnd, lifetime ) ) {
             return Result::E_LIFETIME;
         }
 
@@ -365,7 +365,7 @@ namespace memsess::core {
 
         auto val = sess->values[key].get();
 
-        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
+        if( !checkActualTs( val->tsEnd ) ) {
             return Result::E_KEY_NONE;
         }
 
@@ -398,7 +398,7 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 #endif
 
-        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+        if( _list.find( sessionId ) == _list.end() || !checkActualTs( _list[sessionId]->tsEnd ) ) {
             return Result::E_SESSION_NONE;
         }
 
@@ -415,7 +415,7 @@ namespace memsess::core {
 
         auto val = sess->values[key].get();
         
-        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
+        if( !checkActualTs( val->tsEnd ) ) {
             return Result::E_KEY_NONE;
         }
 
@@ -450,7 +450,7 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 #endif
 
-        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+        if( _list.find( sessionId ) == _list.end() || !checkActualTs( _list[sessionId]->tsEnd ) ) {
             return Result::E_SESSION_NONE;
         }
 
@@ -467,7 +467,7 @@ namespace memsess::core {
 
         auto val = sess->values[key].get();
 
-        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
+        if( !checkActualTs( val->tsEnd ) ) {
             return Result::E_KEY_NONE;
         }
 
@@ -499,7 +499,7 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 #endif
 
-        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+        if( _list.find( sessionId ) == _list.end() || !checkActualTs( _list[sessionId]->tsEnd ) ) {
             return Result::E_SESSION_NONE;
         }
 
@@ -516,7 +516,7 @@ namespace memsess::core {
 
         auto val = sess->values[key].get();
 
-        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
+        if( !checkActualTs( val->tsEnd ) ) {
             return Result::E_KEY_NONE;
         }
 
@@ -542,7 +542,7 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockList( _m );
 #endif
 
-        if( _list.find( sessionId ) == _list.end() || _list[sessionId]->tsEnd < getTime() ) {
+        if( _list.find( sessionId ) == _list.end() || !checkActualTs( _list[sessionId]->tsEnd ) ) {
             return Result::E_SESSION_NONE;
         }
 
@@ -569,7 +569,7 @@ namespace memsess::core {
         for( auto it = _list.begin(); it != _list.end(); ) {
             auto sess = _list[it->first].get();
 
-            if( sess->tsEnd < tsCur ) {
+            if( sess->tsEnd < tsCur && sess->tsEnd != 0 ) {
                 it = _list.erase( it );
                 _count--;
             } else {
@@ -584,6 +584,20 @@ namespace memsess::core {
                 }
             }
         }
+    }
+
+    bool Store::checkActualTs( unsigned long int ts ) {
+        return ts == 0 || ts >= getTime();
+    }
+
+    bool Store::checkChildTs( unsigned long int parentTs, unsigned long int keyLifetime ) {
+        auto tsEndKey = getTime() + keyLifetime;
+
+        if( keyLifetime != 0 && parentTs != 0 && parentTs < tsEndKey ) {
+            return false;
+        }
+
+        return true;
     }
 
     bool Store::incLimiter( Limiter *limiter, unsigned short int limit ) {
