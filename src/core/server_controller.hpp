@@ -29,12 +29,8 @@ namespace memsess::core {
                 REMOVE_KEY = 9,
                 EXIST_KEY = 10,
                 PROLONG_KEY = 11,
-                SET_LIMIT_PER_SEC_TO_READ = 12,
-                SET_LIMIT_PER_SEC_TO_WRITE = 13,
                 ALL_ADD_KEY = 14,
                 ALL_REMOVE_KEY = 15,
-                ALL_SET_LIMIT_PER_SEC_TO_READ = 16,
-                ALL_SET_LIMIT_PER_SEC_TO_WRITE = 17,
                 ADD_SESSION = 18,
             };
             enum ResultCode {
@@ -93,12 +89,8 @@ namespace memsess::core {
             case REMOVE_KEY:
             case EXIST_KEY:
             case PROLONG_KEY:
-            case SET_LIMIT_PER_SEC_TO_READ:
-            case SET_LIMIT_PER_SEC_TO_WRITE:
             case ALL_ADD_KEY:
             case ALL_REMOVE_KEY:
-            case ALL_SET_LIMIT_PER_SEC_TO_READ:
-            case ALL_SET_LIMIT_PER_SEC_TO_WRITE:
             case ADD_SESSION:
                 return true;
             default:
@@ -111,8 +103,6 @@ namespace memsess::core {
             case Commands::GENERATE:
             case Commands::ALL_ADD_KEY:
             case Commands::ALL_REMOVE_KEY:
-            case Commands::ALL_SET_LIMIT_PER_SEC_TO_READ:
-            case Commands::ALL_SET_LIMIT_PER_SEC_TO_WRITE:
                 return true;
             default:
                 return false;
@@ -179,17 +169,14 @@ namespace memsess::core {
         Serialization::Item *listGenerate[] = { &prolong, &end };
         Serialization::Item *listInit[] = { &uuid, &end };
         Serialization::Item *listProlong[] = { &uuid, &prolong, &end };
-        Serialization::Item *listAddKey[] = { &uuid, &key, &value, &prolong, &limitRead, &limitWrite, &end };
+        Serialization::Item *listAddKey[] = { &uuid, &key, &value, &prolong, &end };
+        Serialization::Item *listGetKey[] = { &uuid, &key, &limitRead, &end };
         Serialization::Item *listKey[] = { &uuid, &key, &end };
-        Serialization::Item *listSetKey[] = { &uuid, &key, &value, &counterKeys, &counterRecord, &end };
-        Serialization::Item *listSetForceKey[] = { &uuid, &key, &value, &end };
+        Serialization::Item *listSetKey[] = { &uuid, &key, &value, &counterKeys, &counterRecord, &limitWrite, &end };
+        Serialization::Item *listSetForceKey[] = { &uuid, &key, &value, &limitWrite, &end };
         Serialization::Item *listProlongKey[] = { &uuid, &key, &prolong, &end };
-        Serialization::Item *listSetWriteLimit[] = { &uuid, &key, &limitWrite, &end };
-        Serialization::Item *listSetReadLimit[] = { &uuid, &key, &limitRead, &end };
-        Serialization::Item *listAllAddKey[] = { &key, &value, &limitRead, &limitWrite, &end };
+        Serialization::Item *listAllAddKey[] = { &key, &value, &end };
         Serialization::Item *listAllRemoveKey[] = { &key, &end };
-        Serialization::Item *listAllSetWriteLimit[] = { &key, &limitWrite, &end };
-        Serialization::Item *listAllSetReadLimit[] = { &key, &limitRead, &end };
         Serialization::Item *listAddSession[] = { &uuid, &end };
 
         switch( data[0] ) {
@@ -225,8 +212,6 @@ namespace memsess::core {
                 params.data = value.value_string;
                 params.uuidRaw = uuid.value_string;
                 params.lifetime = ( unsigned int )prolong.value_int;
-                params.limitWrite = ( unsigned short int )limitWrite.value_short_int;
-                params.limitRead = ( unsigned short int )limitRead.value_short_int;
                 break;
             case Commands::ALL_ADD_KEY:
                 if( !Serialization::unpack( listAllAddKey, &data[1], length - 1 ) ) {
@@ -236,8 +221,6 @@ namespace memsess::core {
 
                 params.key = key.value_string;
                 params.data = value.value_string;
-                params.limitWrite = ( unsigned short int )limitWrite.value_short_int;
-                params.limitRead = ( unsigned short int )limitRead.value_short_int;
                 break;
             case Commands::ALL_REMOVE_KEY:
                 if( !Serialization::unpack( listAllRemoveKey, &data[1], length - 1 ) ) {
@@ -248,6 +231,15 @@ namespace memsess::core {
                 params.key = key.value_string;
                 break;
             case Commands::GET_KEY:
+                if( !Serialization::unpack( listGetKey, &data[1], length - 1 ) ) {
+                    return false;
+                }
+
+                params.uuidRaw = uuid.value_string;
+                params.key = key.value_string;
+                params.limitRead = ( unsigned short int )limitRead.value_short_int;
+
+                break;
             case Commands::REMOVE_KEY:
             case Commands::EXIST_KEY:
                 if( !Serialization::unpack( listKey, &data[1], length - 1 ) ) {
@@ -269,6 +261,7 @@ namespace memsess::core {
                 params.dataLength = value.length;
                 params.counterKeys = counterKeys.value_int;
                 params.counterRecord = counterRecord.value_int;
+                params.limitWrite = ( unsigned short int )limitWrite.value_short_int;
                 break;
             case Commands::SET_FORCE_KEY:
                 if( !Serialization::unpack( listSetForceKey, &data[1], length - 1 ) ) {
@@ -279,6 +272,7 @@ namespace memsess::core {
                 params.key = key.value_string;
                 params.data = value.value_string;
                 params.dataLength = value.length;
+                params.limitWrite = ( unsigned short int )limitWrite.value_short_int;
                 break;
             case Commands::PROLONG_KEY:
                 if( !Serialization::unpack( listProlongKey, &data[1], length - 1 ) ) {
@@ -292,40 +286,6 @@ namespace memsess::core {
                 params.uuidRaw = uuid.value_string;
                 params.key = key.value_string;
                 params.lifetime = prolong.value_int;
-                break;
-            case Commands::SET_LIMIT_PER_SEC_TO_READ:
-                if( !Serialization::unpack( listSetReadLimit, &data[1], length - 1 ) ) {
-                    return false;
-                }
-
-                params.uuidRaw = uuid.value_string;
-                params.key = key.value_string;
-                params.limitRead = ( unsigned short int )limitRead.value_short_int;
-                break;
-            case Commands::ALL_SET_LIMIT_PER_SEC_TO_READ:
-                if( !Serialization::unpack( listAllSetReadLimit, &data[1], length - 1 ) ) {
-                    return false;
-                }
-
-                params.key = key.value_string;
-                params.limitRead = ( unsigned short int )limitRead.value_short_int;
-                break;
-            case Commands::SET_LIMIT_PER_SEC_TO_WRITE:
-                if( !Serialization::unpack( listSetWriteLimit, &data[1], length - 1 ) ) {
-                    return false;
-                }
-
-                params.uuidRaw = uuid.value_string;
-                params.key = key.value_string;
-                params.limitWrite = ( unsigned short int )limitWrite.value_short_int;
-                break;
-            case Commands::ALL_SET_LIMIT_PER_SEC_TO_WRITE:
-                if( !Serialization::unpack( listAllSetWriteLimit, &data[1], length - 1 ) ) {
-                    return false;
-                }
-
-                params.key = key.value_string;
-                params.limitWrite = ( unsigned short int )limitWrite.value_short_int;
                 break;
             case Commands::ADD_SESSION:
                 if( !Serialization::unpack( listAddSession, &data[1], length - 1 ) ) {
@@ -433,21 +393,17 @@ namespace memsess::core {
                     params.data,
                     counterKeys,
                     counterRecord,
-                    params.lifetime,
-                    params.limitWrite,
-                    params.limitRead
+                    params.lifetime
                 );
                 break;
             case Commands::ALL_ADD_KEY:
                 res = _store->addAllKey(
                     params.key,
-                    params.data,
-                    params.limitWrite,
-                    params.limitRead
+                    params.data
                 );
                 break;
             case Commands::GET_KEY:
-                res = _store->getKey( uuid, params.key, value, counterKeys, counterRecord );
+                res = _store->getKey( uuid, params.key, value, counterKeys, counterRecord, params.limitRead );
                 break;
             case Commands::REMOVE_KEY:
                 res = _store->removeKey( uuid, params.key );
@@ -465,26 +421,15 @@ namespace memsess::core {
                     params.data,
                     params.dataLength,
                     params.counterKeys,
-                    params.counterRecord
+                    params.counterRecord,
+                    params.limitWrite
                 );
                 break;
             case Commands::SET_FORCE_KEY:
-                res = _store->setForceKey( uuid, params.key, params.data, params.dataLength );
+                res = _store->setForceKey( uuid, params.key, params.data, params.dataLength, params.limitWrite );
                 break;
             case Commands::PROLONG_KEY:
                 res = _store->prolongKey( uuid, params.key, params.lifetime );
-                break;
-            case Commands::SET_LIMIT_PER_SEC_TO_READ:
-                res = _store->setLimitToReadPerSec( uuid, params.key, params.limitRead );
-                break;
-            case Commands::ALL_SET_LIMIT_PER_SEC_TO_READ:
-                res = _store->setLimitToReadPerSecAllKey( params.key, params.limitRead );
-                break;
-            case Commands::SET_LIMIT_PER_SEC_TO_WRITE:
-                res = _store->setLimitToWritePerSec( uuid, params.key, params.limitWrite );
-                break;
-            case Commands::ALL_SET_LIMIT_PER_SEC_TO_WRITE:
-                res = _store->setLimitToWritePerSecAllKey( uuid, params.limitWrite );
                 break;
             case Commands::ADD_SESSION:
                 res = _store->add( uuid );
