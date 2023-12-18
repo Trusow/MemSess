@@ -69,7 +69,8 @@ namespace memsess::i {
             virtual void clearInactive() = 0;
             virtual Result addAllKey(
                 const char *key,
-                const char *value
+                const char *value,
+                unsigned int length
             ) = 0;
             virtual Result removeAllKey( const char *key ) = 0;
     };
