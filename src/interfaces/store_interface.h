@@ -19,7 +19,7 @@ namespace memsess::i {
             };
             virtual void setLimit( unsigned int limit ) = 0;
 
-            virtual Result add( const char *sessionId ) = 0;
+            virtual Result add( const char *sessionId, unsigned int lifetime = 0 ) = 0;
             virtual Result generate( unsigned int lifetime, char *sessionId ) = 0;
             virtual Result exist( const char *sessionId ) = 0;
             virtual void remove( const char *sessionId ) = 0;

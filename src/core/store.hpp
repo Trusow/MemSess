@@ -75,7 +75,7 @@ namespace memsess::core {
             bool checkChildTs( unsigned long int parentTs, unsigned long int keyLifetime );
  
         public:
-            Result add( const char *sessionId );
+            Result add( const char *sessionId, unsigned int lifetime = 0 );
             Result generate( unsigned int lifetime, char *sessionId );
             Result exist( const char *sessionId );
             void setLimit( unsigned int limit );
@@ -138,7 +138,7 @@ namespace memsess::core {
     }
 #endif
 
-    Store::Result Store::add( const char *sessionId ) {
+    Store::Result Store::add( const char *sessionId, unsigned int lifetime ) {
 #if MEMSESS_MULTI
         util::LockAtomic lock( _writers );
         std::lock_guard<std::shared_timed_mutex> lockList( _m );
@@ -153,7 +153,9 @@ namespace memsess::core {
 
         auto item = std::make_unique<Item>();
 
-        item->tsEnd = 0;
+        if( lifetime != 0 ) {
+            item->tsEnd = getTime() + lifetime;
+        }
 
         _list[sessionId] = std::move( item );
         _count++;
