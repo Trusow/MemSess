@@ -6,6 +6,6 @@ multi:
 	$(FLAGS) -D MEMSESS_MULTI -o ./bin/memsess-multi
 
 mono:
-	g++ bard-server.cpp \
+	g++ memsess-server.cpp \
 	\
 	$(FLAGS) -o ./bin/memsess-mono
