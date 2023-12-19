@@ -145,9 +145,6 @@ namespace memsess::core {
         Serialization::Item value;
         value.type = Serialization::STRING;
 
-        Serialization::Item prolong;
-        prolong.type = Serialization::INT;
-
         Serialization::Item lifetime;
         lifetime.type = Serialization::INT;
 
@@ -166,18 +163,18 @@ namespace memsess::core {
         Serialization::Item end;
         end.type = Serialization::END;
 
-        Serialization::Item *listGenerate[] = { &prolong, &end };
+        Serialization::Item *listGenerate[] = { &lifetime, &end };
         Serialization::Item *listInit[] = { &uuid, &end };
-        Serialization::Item *listProlong[] = { &uuid, &prolong, &end };
-        Serialization::Item *listAddKey[] = { &uuid, &key, &value, &prolong, &end };
+        Serialization::Item *listProlong[] = { &uuid, &lifetime, &end };
+        Serialization::Item *listAddKey[] = { &uuid, &key, &value, &lifetime, &end };
         Serialization::Item *listGetKey[] = { &uuid, &key, &limitRead, &end };
         Serialization::Item *listKey[] = { &uuid, &key, &end };
         Serialization::Item *listSetKey[] = { &uuid, &key, &value, &counterKeys, &counterRecord, &limitWrite, &end };
         Serialization::Item *listSetForceKey[] = { &uuid, &key, &value, &limitWrite, &end };
-        Serialization::Item *listProlongKey[] = { &uuid, &key, &prolong, &end };
+        Serialization::Item *listProlongKey[] = { &uuid, &key, &lifetime, &end };
         Serialization::Item *listAllAddKey[] = { &key, &value, &end };
         Serialization::Item *listAllRemoveKey[] = { &key, &end };
-        Serialization::Item *listAddSession[] = { &uuid, &prolong, &end };
+        Serialization::Item *listAddSession[] = { &uuid, &lifetime, &end };
 
         switch( data[0] ) {
             case Commands::GENERATE:
@@ -185,7 +182,7 @@ namespace memsess::core {
                     return false;
                 }
 
-                params.lifetime = ( unsigned int )prolong.value_int;
+                params.lifetime = ( unsigned int )lifetime.value_int;
                 break;
             case Commands::INIT:
             case Commands::REMOVE:
@@ -200,7 +197,7 @@ namespace memsess::core {
                 }
 
                 params.uuidRaw = uuid.value_string;
-                params.lifetime = ( unsigned int )prolong.value_int;
+                params.lifetime = ( unsigned int )lifetime.value_int;
                 break;
             case Commands::ADD_KEY:
                 if( !Serialization::unpack( listAddKey, &data[1], length - 1 ) ) {
@@ -212,7 +209,7 @@ namespace memsess::core {
                 params.data = value.value_string;
                 params.dataLength = value.length;
                 params.uuidRaw = uuid.value_string;
-                params.lifetime = ( unsigned int )prolong.value_int;
+                params.lifetime = ( unsigned int )lifetime.value_int;
                 break;
             case Commands::ALL_ADD_KEY:
                 if( !Serialization::unpack( listAllAddKey, &data[1], length - 1 ) ) {
@@ -283,7 +280,7 @@ namespace memsess::core {
 
                 params.uuidRaw = uuid.value_string;
                 params.key = key.value_string;
-                params.lifetime = prolong.value_int;
+                params.lifetime = lifetime.value_int;
                 break;
             case Commands::ADD_SESSION:
                 if( !Serialization::unpack( listAddSession, &data[1], length - 1 ) ) {
@@ -291,7 +288,7 @@ namespace memsess::core {
                 }
 
                 params.uuidRaw = uuid.value_string;
-                params.lifetime = prolong.value_int;
+                params.lifetime = lifetime.value_int;
                 break;
             default:
                 return false;
