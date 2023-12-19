@@ -25,9 +25,12 @@ namespace memsess::core {
     class Store: public i::StoreInterface {
 
         public:
+            struct LimiterValue {
+                unsigned long int ts;
+                unsigned short int count;
+            };
             struct Limiter {
-                unsigned long int ts; 
-                unsigned int count;
+                std::unordered_map<unsigned short int, LimiterValue> values;
 #if MEMSESS_MULTI
                 std::mutex m;
 #endif
@@ -608,14 +611,25 @@ namespace memsess::core {
 #if MEMSESS_MULTI
         std::lock_guard<std::mutex> lock( limiter->m );
 #endif
+        if( limiter->values.find( limit ) == limiter->values.end() ) {
+            LimiterValue value;
+            value.count = 1;
+            value.ts = getTime();
+            limiter->values[limit] = value;
 
-        if( limit == limiter->count && limiter->ts == getTime() ) {
+            return true;
+        }
+
+        auto value = &limiter->values[limit];
+
+
+        if( limit == value->count && value->ts == getTime() ) {
             return false;
-        } else if( limiter->ts != getTime() ) {
-            limiter->ts = getTime();
-            limiter->count = 1;
+        } else if( value->ts != getTime() ) {
+            value->ts = getTime();
+            value->count = 1;
         } else {
-            limiter->count++;
+            value->count++;
         }
 
         return true;
