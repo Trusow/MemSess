@@ -177,7 +177,7 @@ namespace memsess::core {
         Serialization::Item *listProlongKey[] = { &uuid, &key, &prolong, &end };
         Serialization::Item *listAllAddKey[] = { &key, &value, &end };
         Serialization::Item *listAllRemoveKey[] = { &key, &end };
-        Serialization::Item *listAddSession[] = { &uuid, &end };
+        Serialization::Item *listAddSession[] = { &uuid, &prolong, &end };
 
         switch( data[0] ) {
             case Commands::GENERATE:
@@ -291,6 +291,7 @@ namespace memsess::core {
                 }
 
                 params.uuidRaw = uuid.value_string;
+                params.lifetime = prolong.value_int;
                 break;
             default:
                 return false;
@@ -432,7 +433,7 @@ namespace memsess::core {
                 res = _store->prolongKey( uuid, params.key, params.lifetime );
                 break;
             case Commands::ADD_SESSION:
-                res = _store->add( uuid );
+                res = _store->add( uuid, params.lifetime );
                 break;
         }
 
