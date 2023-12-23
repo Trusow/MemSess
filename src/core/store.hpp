@@ -123,8 +123,7 @@ namespace memsess::core {
             Result addAllKey(
                 const char *key,
                 const char *value,
-                unsigned int length,
-                unsigned int lifetime
+                unsigned int length
             );
             Result removeAllKey( const char *key );
     };
@@ -641,15 +640,13 @@ namespace memsess::core {
     Store::Result Store::addAllKey(
         const char *key,
         const char *value,
-        unsigned int length,
-        unsigned int lifetime
+        unsigned int length
     ) {
 #if MEMSESS_MULTI
         util::LockAtomic lock( _writers );
         std::lock_guard<std::shared_timed_mutex> lockList( _m );
 #endif
         auto tsCur = getTime();
-        auto tsEnd = getTime() + lifetime;
 
         for( auto it = _list.begin(); it != _list.end(); ++it ) {
             auto sess = _list[it->first].get();
@@ -663,10 +660,6 @@ namespace memsess::core {
 
             val->limiterWrite = std::make_unique<Limiter>();
             val->limiterRead = std::make_unique<Limiter>();
-
-            if( lifetime != 0 ) {
-                val->tsEnd = tsEnd;
-            }
 
             sess->values[key] = std::move( val );
         }

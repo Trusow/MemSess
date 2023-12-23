@@ -70,8 +70,7 @@ namespace memsess::i {
             virtual Result addAllKey(
                 const char *key,
                 const char *value,
-                unsigned int length,
-                unsigned int lifetime = 0
+                unsigned int length
             ) = 0;
             virtual Result removeAllKey( const char *key ) = 0;
     };

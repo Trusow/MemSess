@@ -172,7 +172,7 @@ namespace memsess::core {
         Serialization::Item *listSetKey[] = { &uuid, &key, &value, &counterKeys, &counterRecord, &limitWrite, &end };
         Serialization::Item *listSetForceKey[] = { &uuid, &key, &value, &limitWrite, &end };
         Serialization::Item *listProlongKey[] = { &uuid, &key, &lifetime, &end };
-        Serialization::Item *listAllAddKey[] = { &key, &value, &lifetime, &end };
+        Serialization::Item *listAllAddKey[] = { &key, &value, &end };
         Serialization::Item *listAllRemoveKey[] = { &key, &end };
         Serialization::Item *listAddSession[] = { &uuid, &lifetime, &end };
 
@@ -220,7 +220,6 @@ namespace memsess::core {
                 params.key = key.value_string;
                 params.data = value.value_string;
                 params.dataLength = value.length;
-                params.lifetime = ( unsigned int )lifetime.value_int;
                 break;
             case Commands::ALL_REMOVE_KEY:
                 if( !Serialization::unpack( listAllRemoveKey, &data[1], length - 1 ) ) {
@@ -398,8 +397,7 @@ namespace memsess::core {
                 res = _store->addAllKey(
                     params.key,
                     params.data,
-                    params.dataLength,
-                    params.lifetime
+                    params.dataLength
                 );
                 break;
             case Commands::GET_KEY:
