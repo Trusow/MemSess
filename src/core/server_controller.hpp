@@ -40,7 +40,7 @@ namespace memsess::core {
                 SESSION_NONE = 4,
                 KEY_NONE = 5,
                 LIMIT = 6,
-                LIFETIME = 7,
+                LIFETIME_EXCEEDED = 7,
                 DUPLICATE_KEY = 8,
                 RECORD_BEEN_CHANGED = 9,
                 LIMIT_PER_SEC = 10,
@@ -118,8 +118,8 @@ namespace memsess::core {
                 return KEY_NONE;
             case StoreInterface::E_LIMIT:
                 return LIMIT;
-            case StoreInterface::E_LIFETIME:
-                return LIFETIME;
+            case StoreInterface::E_LIFETIME_EXCEEDED:
+                return LIFETIME_EXCEEDED;
             case StoreInterface::E_DUPLICATE_KEY:
                 return DUPLICATE_KEY;
             case StoreInterface::E_RECORD_BEEN_CHANGED:

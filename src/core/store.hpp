@@ -280,7 +280,7 @@ namespace memsess::core {
         auto sess = _list[sessionId].get();
 
         if( !checkChildTs( sess->tsEnd, lifetime ) ) {
-            return Result::E_LIFETIME;
+            return Result::E_LIFETIME_EXCEEDED;
         }
 
 #if MEMSESS_MULTI
@@ -356,7 +356,7 @@ namespace memsess::core {
         auto sess = _list[sessionId].get();
 
         if( !checkChildTs( sess->tsEnd, lifetime ) ) {
-            return Result::E_LIFETIME;
+            return Result::E_LIFETIME_EXCEEDED;
         }
 
 #if MEMSESS_MULTI
