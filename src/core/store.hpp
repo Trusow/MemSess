@@ -144,7 +144,7 @@ namespace memsess::core {
         std::lock_guard<std::shared_timed_mutex> lockList( _m );
 #endif
         if( ( _count == _limit && _limit != 0 ) || _count == 0xFF'FF'FF'FF ) {
-            return Result::E_LIMIT;
+            return Result::E_LIMIT_EXCEEDED;
         }
 
         if( _list.find( sessionId ) != _list.end() ) {
@@ -169,7 +169,7 @@ namespace memsess::core {
         std::lock_guard<std::shared_timed_mutex> lockList( _m );
 #endif
         if( ( _count == _limit && _limit != 0 ) || _count == 0xFF'FF'FF'FF ) {
-            return Result::E_LIMIT;
+            return Result::E_LIMIT_EXCEEDED;
         }
 
         while( true ) {
@@ -434,7 +434,7 @@ namespace memsess::core {
         }
 
         if( !incLimiter( val->limiterWrite.get(), limit ) ) {
-            return Result::E_LIMIT_PER_SEC;
+            return Result::E_LIMIT_PER_SEC_EXCEEDED;
         }
 
         val->value = std::string( value, length );
@@ -482,7 +482,7 @@ namespace memsess::core {
 #endif
 
         if( !incLimiter( val->limiterWrite.get(), limit ) ) {
-            return Result::E_LIMIT_PER_SEC;
+            return Result::E_LIMIT_PER_SEC_EXCEEDED;
         }
 
         val->value = std::string( value, length );
@@ -531,7 +531,7 @@ namespace memsess::core {
 #endif
 
         if( !incLimiter( val->limiterRead.get(), limit ) ) {
-            return Result::E_LIMIT_PER_SEC;
+            return Result::E_LIMIT_PER_SEC_EXCEEDED;
         }
 
         value = val->value;

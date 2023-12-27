@@ -11,11 +11,11 @@ namespace memsess::i {
                 E_SESSION_NONE,
                 E_DUPLICATE_SESSION,
                 E_KEY_NONE,
-                E_LIMIT,
+                E_LIMIT_EXCEEDED,
                 E_LIFETIME_EXCEEDED,
                 E_DUPLICATE_KEY,
                 E_RECORD_BEEN_CHANGED,
-                E_LIMIT_PER_SEC,
+                E_LIMIT_PER_SEC_EXCEEDED,
             };
             virtual void setLimit( unsigned int limit ) = 0;
 

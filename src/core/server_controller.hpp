@@ -39,11 +39,11 @@ namespace memsess::core {
                 WRONG_PARAMS = 3,
                 SESSION_NONE = 4,
                 KEY_NONE = 5,
-                LIMIT = 6,
+                LIMIT_EXCEEDED = 6,
                 LIFETIME_EXCEEDED = 7,
                 DUPLICATE_KEY = 8,
                 RECORD_BEEN_CHANGED = 9,
-                LIMIT_PER_SEC = 10,
+                LIMIT_PER_SEC_EXCEEDED = 10,
                 DUPLICATE_SESSION = 11,
             };
             struct Params {
@@ -116,16 +116,16 @@ namespace memsess::core {
                 return SESSION_NONE;
             case StoreInterface::E_KEY_NONE:
                 return KEY_NONE;
-            case StoreInterface::E_LIMIT:
-                return LIMIT;
+            case StoreInterface::E_LIMIT_EXCEEDED:
+                return LIMIT_EXCEEDED;
             case StoreInterface::E_LIFETIME_EXCEEDED:
                 return LIFETIME_EXCEEDED;
             case StoreInterface::E_DUPLICATE_KEY:
                 return DUPLICATE_KEY;
             case StoreInterface::E_RECORD_BEEN_CHANGED:
                 return RECORD_BEEN_CHANGED;
-            case StoreInterface::E_LIMIT_PER_SEC:
-                return LIMIT_PER_SEC;
+            case StoreInterface::E_LIMIT_PER_SEC_EXCEEDED:
+                return LIMIT_PER_SEC_EXCEEDED;
             case StoreInterface::E_DUPLICATE_SESSION:
                 return DUPLICATE_SESSION;
             default:
