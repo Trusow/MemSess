@@ -73,6 +73,10 @@ namespace memsess::core {
             bool incLimiter( Limiter *limiter, unsigned short int limit );
             bool checkActualTs( unsigned long int ts );
             bool checkChildTs( unsigned long int parentTs, unsigned long int keyLifetime );
+            Value *_getKey(
+                std::unordered_map<std::string, std::unique_ptr<Value>> &values,
+                const char *name
+            );
  
         public:
             Result add( const char *sessionId, unsigned int lifetime = 0 );
@@ -288,7 +292,7 @@ namespace memsess::core {
         std::lock_guard<std::shared_timed_mutex> lockValues( sess->m );
 #endif
 
-        if( sess->values.find( key ) != sess->values.end() ) {
+        if( _getKey( sess->values, key ) != nullptr ) {
             return Result::E_DUPLICATE_KEY;
         }
 
@@ -328,13 +332,7 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
 #endif
 
-        if( sess->values.find( key ) == sess->values.end() ) {
-            return Result::E_KEY_NONE;
-        }
-
-        auto val = sess->values[key].get();
-        
-        if( val->tsEnd != 0 && val->tsEnd < getTime() ) {
+        if( _getKey( sess->values, key ) == nullptr ) {
             return Result::E_KEY_NONE;
         }
 
@@ -363,14 +361,9 @@ namespace memsess::core {
         _wait( sess->writers );
         std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
 #endif
+        auto val = _getKey( sess->values, key );
 
-        if( sess->values.find( key ) == sess->values.end() ) {
-            return Result::E_KEY_NONE;
-        }
-
-        auto val = sess->values[key].get();
-
-        if( !checkActualTs( val->tsEnd ) ) {
+        if( val == nullptr ) {
             return Result::E_KEY_NONE;
         }
 
@@ -414,16 +407,12 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
 #endif
 
-        if( sess->values.find( key ) == sess->values.end() ) {
+        auto val = _getKey( sess->values, key );
+
+        if( val == nullptr ) {
             return Result::E_KEY_NONE;
         }
-
-        auto val = sess->values[key].get();
         
-        if( !checkActualTs( val->tsEnd ) ) {
-            return Result::E_KEY_NONE;
-        }
-
 #if MEMSESS_MULTI
         util::LockAtomic writersValue( val->writers );
         std::lock_guard<std::shared_timed_mutex> lockValue( val->m );
@@ -466,13 +455,9 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
 #endif
 
-        if( sess->values.find( key ) == sess->values.end() ) {
-            return Result::E_KEY_NONE;
-        }
+        auto val = _getKey( sess->values, key );
 
-        auto val = sess->values[key].get();
-
-        if( !checkActualTs( val->tsEnd ) ) {
+        if( val == nullptr ) {
             return Result::E_KEY_NONE;
         }
 
@@ -515,13 +500,9 @@ namespace memsess::core {
         std::shared_lock<std::shared_timed_mutex> lockValues( sess->m );
 #endif
 
-        if( sess->values.find( key ) == sess->values.end() ) {
-            return Result::E_KEY_NONE;
-        }
+        auto val = _getKey( sess->values, key );
 
-        auto val = sess->values[key].get();
-
-        if( !checkActualTs( val->tsEnd ) ) {
+        if( val == nullptr ) {
             return Result::E_KEY_NONE;
         }
 
@@ -603,6 +584,19 @@ namespace memsess::core {
         }
 
         return true;
+    }
+
+    Store::Value *Store::_getKey(
+        std::unordered_map<std::string, std::unique_ptr<Value>> &values,
+        const char *name
+    ) {
+        if( values.find( name ) == values.end() ) return nullptr;
+
+        auto key = values[name].get();
+
+        if( checkActualTs( key->tsEnd ) ) return key;
+
+        return nullptr;
     }
 
     bool Store::incLimiter( Limiter *limiter, unsigned short int limit ) {
