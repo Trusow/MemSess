@@ -151,7 +151,7 @@ namespace memsess::core {
             return Result::E_LIMIT_EXCEEDED;
         }
 
-        if( _list.find( sessionId ) != _list.end() ) {
+        if( _list.find( sessionId ) != _list.end() && checkActualTs( _list[sessionId]->tsEnd ) ) {
             return Result::E_DUPLICATE_SESSION;
         }
 
