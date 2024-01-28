@@ -13,6 +13,8 @@
 #include <memory>
 #include <unistd.h>
 #include "../interfaces/server_controller_interface.h"
+#include "../interfaces/monitoring_interface.h"
+#include "../util/time.hpp"
 
 namespace memsess::core {
 
@@ -30,10 +32,12 @@ namespace memsess::core {
             struct Connection {
                 struct event* readEvent;
                 struct event* writeEvent;
+                unsigned long int tMonitoring;
                 Buffer readBuf;
                 Buffer writeBuf;
             };
             static inline i::ServerControllerInterface *_controller = nullptr;
+            static inline i::MonitoringInterface *_monitoring = nullptr;
 
             unsigned int _createSocket();
             void _bindSocket( unsigned int fd );
@@ -51,7 +55,7 @@ namespace memsess::core {
             static void clearBuffer( Buffer &buffer );
 
         public:
-            Server( unsigned short int port, i::ServerControllerInterface *controller, bool isTimer = false );
+            Server( unsigned short int port, i::ServerControllerInterface *controller, i::MonitoringInterface *monitoring, bool isTimer = false );
             void run();
     };
 
@@ -85,10 +89,11 @@ namespace memsess::core {
         }
     }
 
-    Server::Server( unsigned short int port, i::ServerControllerInterface *controller, bool isTimer ) {
+    Server::Server( unsigned short int port, i::ServerControllerInterface *controller, i::MonitoringInterface *monitoring, bool isTimer ) {
         _port = port;
         _isTimer = isTimer;
         _controller = controller;
+        _monitoring = monitoring;
         _sfd = _createSocket();
         _bindSocket( _sfd );
     }
@@ -111,18 +116,22 @@ namespace memsess::core {
         Connection *conn = (Connection *)arg;
 
         if( conn->readBuf.length == 0 ) {
+            conn->tMonitoring = util::Time::getMs();
             auto lengthData = 0;
 
             auto l = ::recv( sock, &lengthData, sizeof( unsigned int ), MSG_NOSIGNAL );
+
             if( l < sizeof( unsigned int ) ) {
                 close( sock, conn );
                 return;
             }
+            _monitoring->incReceivedBytes( l );
 
             lengthData = ntohl( lengthData );
 
             if( lengthData == 0 || lengthData > 1'048'576 + 1024 ) {
                 close( sock, conn );
+                _monitoring->incErrorDisconnection();
                 return;
             }
 
@@ -138,11 +147,17 @@ namespace memsess::core {
             return;
         }
 
+        _monitoring->incReceivedBytes( l );
+
         conn->readBuf.wrLength += l;
 
         if( conn->readBuf.wrLength == conn->readBuf.length ) {
+            _monitoring->updateDurationReceiving( util::Time::getMs() - conn->tMonitoring );
             unsigned int resultLength = 0;
+            conn->tMonitoring = util::Time::getMs();
             auto result = _controller->parse( conn->readBuf.data.get(), conn->readBuf.length, resultLength );
+
+            _monitoring->updateDurationProcessing( util::Time::getMs() - conn->tMonitoring );
             clearBuffer( conn->readBuf );
 
             if( resultLength == 0 ) {
@@ -150,17 +165,22 @@ namespace memsess::core {
             } else {
                 conn->writeBuf.data = std::move( result );
                 conn->writeBuf.length = resultLength;
+                conn->tMonitoring = util::Time::getMs();
 
                 auto l = ::send( sock, &conn->writeBuf.data[conn->writeBuf.wrLength], conn->writeBuf.length - conn->writeBuf.wrLength, MSG_NOSIGNAL );
 
                 if( l <= 0 ) {
                     close( sock, conn );
+                    _monitoring->incErrorDisconnection();
                     return;
                 }
+
+                _monitoring->incSendedBytes( l );
 
                 conn->writeBuf.wrLength += l;
 
                 if( conn->writeBuf.wrLength == conn->writeBuf.length ) {
+                    _monitoring->updateDurationSending( util::Time::getMs() - conn->tMonitoring );
                     clearBuffer( conn->writeBuf );
                 }
             }
@@ -178,12 +198,16 @@ namespace memsess::core {
 
         if( l <= 0 ) {
             close( sock, conn );
+            _monitoring->incErrorDisconnection();
             return;
         }
+
+        _monitoring->incSendedBytes( l );
 
         conn->writeBuf.wrLength += l;
 
         if( conn->writeBuf.wrLength == conn->writeBuf.length ) {
+            _monitoring->updateDurationSending( util::Time::getMs() - conn->tMonitoring );
             clearBuffer( conn->writeBuf );
         }
     }
@@ -196,7 +220,11 @@ namespace memsess::core {
     }
 
     void Server::timer( int sock, short what, void *arg ) {
+        auto tStart = util::Time::getMs();
         _controller->interval();
+        auto tEnd = util::Time::getMs();
+
+        _monitoring->updateDurationProcessing( tEnd - tStart );
     }
 
     void Server::accept( int sock, short what, void *arg) {
