@@ -4,12 +4,12 @@ MKDIR = mkdir bin -p
 
 multi:
 	$(MKDIR) && \
-	g++ memsess-server.cpp \
+	g++ memsess_server.cpp \
 	\
 	$(FLAGS) -D MEMSESS_MULTI -o ./bin/memsess-multi
 
 mono:
 	$(MKDIR) && \
-	g++ memsess-server.cpp \
+	g++ memsess_server.cpp \
 	\
 	$(FLAGS) -o ./bin/memsess-mono
