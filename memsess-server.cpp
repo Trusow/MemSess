@@ -2,6 +2,7 @@
 #include "src/core/store.hpp"
 #include "src/core/server.hpp"
 #include "src/core/cmd.hpp"
+#include "src/core/monitoring.hpp"
 #include "src/util/console.hpp"
 #include <string>
 #include <iostream>
@@ -10,8 +11,8 @@
 
 using namespace memsess::util;
 
-void startServer( memsess::core::ServerController *controller, unsigned short int port ) {
-    memsess::core::Server server( port, controller );
+void startServer( memsess::core::ServerController *controller, memsess::core::Monitoring *monitoring, unsigned short int port ) {
+    memsess::core::Server server( port, controller, monitoring );
     server.run();
 }
 
@@ -21,17 +22,18 @@ void start( unsigned int limit, unsigned short int port, unsigned short int thre
     std::cout << "port " << port << std::endl;
 
 
-    memsess::core::Store store;
+    memsess::core::Monitoring monitoring;
+    memsess::core::Store store( &monitoring );
     store.setLimit( limit );
 
-    memsess::core::ServerController controller( &store );
+    memsess::core::ServerController controller( &store, &monitoring );
 
-    memsess::core::Server server( port, &controller, true );
+    memsess::core::Server server( port, &controller, &monitoring, true );
     memsess::util::Console::printSuccess( "Start server" );
 
     if( threads > 1 ) {
         for( unsigned int i = 1; i < threads; i++ ) {
-            std::thread t( startServer, &controller, port );
+            std::thread t( startServer, &controller, &monitoring, port );
             t.detach();
         }
     }
