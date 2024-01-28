@@ -154,10 +154,10 @@ namespace memsess::core {
         if( conn->readBuf.wrLength == conn->readBuf.length ) {
             _monitoring->updateDurationReceiving( util::Time::getMs() - conn->tMonitoring );
             unsigned int resultLength = 0;
-            conn->tMonitoring = util::Time::getMs();
+            auto tStart = util::Time::getMs();
             auto result = _controller->parse( conn->readBuf.data.get(), conn->readBuf.length, resultLength );
 
-            _monitoring->updateDurationProcessing( util::Time::getMs() - conn->tMonitoring );
+            _monitoring->updateDurationProcessing( util::Time::getMs() - tStart );
             clearBuffer( conn->readBuf );
 
             if( resultLength == 0 ) {
