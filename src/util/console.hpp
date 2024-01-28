@@ -11,15 +11,11 @@ namespace memsess::util {
     };
 
     void Console::printSuccess( const char *text ) {
-        std::cout << "\x1b[32m";
-        std::cout << text << std::endl;
-        std::cout << "\x1b[0m";
+        std::cout << "\x1b[32m" << text << "\x1b[0m" << std::endl;;
     }
 
     void Console::printDanger( const char *text ) {
-        std::cout << "\x1b[31m";
-        std::cout << text << std::endl;
-        std::cout << "\x1b[0m";
+        std::cout << "\x1b[31m" << text << "\x1b[0m" << std::endl;;
     }
 }
 
