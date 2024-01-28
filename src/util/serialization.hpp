@@ -5,6 +5,9 @@
 #include <arpa/inet.h>
 #include <memory>
 
+#define htonll(x) ((1==htonl(1)) ? (x) : (((uint64_t)htonl((x) & 0xfffffffful)) << 32) | htonl((uint32_t)((x) >> 32)))
+#define ntohll(x) ((1==ntohl(1)) ? (x) : (((uint64_t)ntohl((x) & 0xfffffffful)) << 32) | ntohl((uint32_t)((x) >> 32)))
+
 namespace memsess::util {
     class Serialization {
         public:
@@ -15,6 +18,7 @@ namespace memsess::util {
                 STRING_WITH_NULL,
                 SHORT_INT,
                 INT,
+                LONG_INT,
                 END,
             };
 
@@ -23,6 +27,7 @@ namespace memsess::util {
                 char value_char;
                 const char *value_string;
                 short int value_short_int;
+                long int value_long_int;
                 int value_int;
                 unsigned int length;
             };
@@ -57,12 +62,16 @@ namespace memsess::util {
                 case INT:
                     resultLength += sizeof( int );
                     break;
+                case LONG_INT:
+                    resultLength += sizeof( long int );
+                    break;
             }
         }
 
         unsigned int offset = 0;
         unsigned int length = 0;
         int value_int = 0;
+        long int value_long_int = 0;
         short int value_short_int = 0;
         char null = 0;
         auto data = std::make_unique<char[]>(resultLength);
@@ -109,6 +118,10 @@ namespace memsess::util {
                     memcpy( &data[offset], &value_int, sizeof( int ) );
                     offset += sizeof( int );
                     break;
+                case LONG_INT:
+                    value_long_int = htonll( item->value_long_int );
+                    memcpy( &data[offset], &value_long_int, sizeof( long int ) );
+                    offset += sizeof( long int );
             }
         }
 
@@ -118,6 +131,7 @@ namespace memsess::util {
     bool Serialization::unpack( Item **items, const char *data, unsigned int length ) {
         int value_int = 0;
         short int value_short_int = 0;
+        long int value_long_int = 0;
         unsigned int string_length;
         unsigned int offset = 0;
 
@@ -195,6 +209,15 @@ namespace memsess::util {
                     memcpy( &value_int, &data[offset], sizeof( int ) );
                     item->value_int = ntohl( value_int );
                     offset += sizeof( int );
+                    break;
+                case LONG_INT:
+                    if( offset + sizeof( long int ) > length ) {
+                        return false;
+                    }
+
+                    memcpy( &value_long_int, &data[offset], sizeof( long int ) );
+                    item->value_long_int = ntohll( value_long_int );
+                    offset += sizeof( long int );
                     break;
             }
         }
