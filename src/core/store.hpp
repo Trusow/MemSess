@@ -14,6 +14,7 @@
 #include <string.h>
 #include <time.h>
 #include "../interfaces/store_interface.h"
+#include "../interfaces/monitoring_interface.h"
 #include "../util/uuid.hpp"
 
 #if MEMSESS_MULTI
@@ -66,6 +67,7 @@ namespace memsess::core {
 #endif
             unsigned int _limit;
             unsigned int _count = 0;
+            i::MonitoringInterface *_monitoring;
 #if MEMSESS_MULTI
             void _wait( std::atomic_uint &atom );
 #endif
@@ -79,6 +81,7 @@ namespace memsess::core {
             );
  
         public:
+            Store( i::MonitoringInterface *monitoring );
             Result add( const char *sessionId, unsigned int lifetime = 0 );
             Result generate( unsigned int lifetime, char *sessionId );
             Result exist( const char *sessionId );
@@ -136,6 +139,10 @@ namespace memsess::core {
         return time( NULL );
     }
 
+    Store::Store( i::MonitoringInterface *monitoring ) {
+        _monitoring = monitoring;
+    }
+
 #if MEMSESS_MULTI
     void Store::_wait( std::atomic_uint &atom ) {
         while( atom );
@@ -163,6 +170,7 @@ namespace memsess::core {
 
         _list[sessionId] = std::move( item );
         _count++;
+        _monitoring->updateTotalFreeSessions( _limit -_count );
 
         return Result::OK;
     }
@@ -192,6 +200,7 @@ namespace memsess::core {
 
         _list[sessionId] = std::move( item );
         _count++;
+        _monitoring->updateTotalFreeSessions( _limit -_count );
 
         return Result::OK;
     }
@@ -220,6 +229,7 @@ namespace memsess::core {
         }
 
         _limit = limit;
+        _monitoring->updateTotalFreeSessions( _limit );
     }
 
     void Store::remove( const char *sessionId ) {
@@ -558,6 +568,7 @@ namespace memsess::core {
             if( sess->tsEnd < tsCur && sess->tsEnd != 0 ) {
                 it = _list.erase( it );
                 _count--;
+                _monitoring->updateTotalFreeSessions( _limit -_count );
             } else {
                 ++it;
                 for( auto itV = sess->values.begin(); itV != sess->values.end(); ) {
